@@ -33,3 +33,18 @@ unzip retinaface/model/retinaface-R50.zip -d retinaface/model/retinaface-R50
 ```
 python detect_crop_faces_retinaface_OpensetFDIC_IJCB2024.py --input_path /datasets2/3rd_OpensetFDIC_IJCB2024/validation_images
 ```
+- The following directory will be created:
+  ```
+  ├─ /datasets2
+      ├─ 3rd_OpensetFDIC_IJCB2024
+          ├─ validation_images_DETECTED_FACES_RETINAFACE_scales=[1.0]
+              ├─ imgs
+              ├─ txt
+              ├─ files_no_face_detected_thresh=0.01_starttime=2024-03-26_22-21-07.txt
+  
+  ```
+
+### Merge individual detections into one unified file
+```
+python merge_face_detections_OpensetFDIC_IJCB2024.py --input_path /datasets2/3rd_OpensetFDIC_IJCB2024/validation_images_DETECTED_FACES_RETINAFACE_scales=[1.0]/txt
+```
