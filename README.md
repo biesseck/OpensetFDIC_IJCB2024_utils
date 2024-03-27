@@ -15,7 +15,7 @@ conda activate $ENV
 pip3 install -r requirements.txt
 ```
 
-### Config RetinaFace
+### Compile RCNN
 ```
 cd retinaface
 make
