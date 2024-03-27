@@ -26,5 +26,10 @@ make
 - Save file [retinaface-R50.zip](https://drive.google.com/file/d/1_DKgGxQWqlTqe78pw0KavId9BIMNUWfu/view?usp=sharing) to folder `retinaface/model`
 ```
 cd retinaface/model
-unzip retinaface-R50.zip -d retinaface-R50
+unzip retinaface/model/retinaface-R50.zip -d retinaface/model/retinaface-R50
+```
+
+### Run face detection script
+```
+python detect_crop_faces_retinaface_OpensetFDIC_IJCB2024.py --input_path /datasets2/3rd_OpensetFDIC_IJCB2024/validation_images
 ```
