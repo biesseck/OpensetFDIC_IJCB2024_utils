@@ -24,4 +24,7 @@ make
 ### Download pre-trained model RetinaFace-R50
 
 - Save file [retinaface-R50.zip](https://drive.google.com/file/d/1_DKgGxQWqlTqe78pw0KavId9BIMNUWfu/view?usp=sharing) to folder `retinaface/model`
-- Unzip file `retinaface-R50.zip`
+```
+cd retinaface/model
+unzip retinaface-R50.zip -d retinaface-R50
+```
