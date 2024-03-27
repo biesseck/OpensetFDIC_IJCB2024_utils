@@ -1,4 +1,4 @@
-# FRCSyn_WACV2024_utils
+# OpensetFDIC_IJCB2024_utils
 
 ```
 git clone https://github.com/BOVIFOCR/FRCSyn_WACV2024_utils.git
