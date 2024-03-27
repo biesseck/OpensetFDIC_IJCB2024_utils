@@ -1,4 +1,4 @@
-name: BOVIFOCR_FRCSyn_WACV2024
+name: BOVIFOCR_OpensetFDIC_IJCB2024
 channels:
   - defaults
 dependencies:
@@ -73,4 +73,4 @@ dependencies:
     - urllib3==2.0.5
     - wcwidth==0.2.6
     - zipp==3.17.0
-# prefix: /home/bjgbiesseck/anaconda3/envs/BOVIFOCR_FRCSyn_WACV2024
+# prefix: /home/bjgbiesseck/anaconda3/envs/BOVIFOCR_OpensetFDIC_IJCB2024
