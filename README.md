@@ -14,3 +14,9 @@ conda env create -y --name $ENV --file environment.yml
 conda activate $ENV
 pip3 install -r requirements.txt
 ```
+
+### Config RetinaFace
+```
+cd retinaface
+make
+```
