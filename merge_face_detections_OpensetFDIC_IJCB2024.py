@@ -14,6 +14,7 @@ def getArgs():
     parser.add_argument('--input_path', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/validation_images_DETECTED_FACES_RETINAFACE_scales=[0.5]/txt', help='')
     parser.add_argument('--input_ext', type=str, default='.txt', help='')
     parser.add_argument('--output_path', type=str, default='', help='the dir the cropped faces of your dataset where to save')
+    parser.add_argument('--thresh', type=float, default=0.5, help='threshold for face detection')
 
     args = parser.parse_args()
     return args
@@ -31,20 +32,23 @@ def get_all_files_in_path(folder_path, file_extension='.jpg', pattern=''):
 
 
 # based on https://github.com/AIML-IfI/uccs-facerec-challenge/blob/main/facerec/face_detection.py
-def save_detections_txt(detections, saving_path):
+def save_detections_txt(detections, saving_path, thresh):
+    num_saved_faces = 0
     with open(saving_path, "w") as f:
         header = "FILE,DETECTION_SCORE,BB_X,BB_Y,BB_WIDTH,BB_HEIGHT,REYE_X,REYE_Y,LEYE_X,LEYE_Y,NOSE_X,NOSE_Y,RMOUTH_X,RMOUTH_Y,LMOUTH_X,LMOUTH_Y"
         header_list = header.split(',')
         f.write(header + "\n")
         for d, detects in enumerate(detections):
-            # print('detects:', detects)
             for i, detect in enumerate(detects):
-                for k, key in enumerate(header_list):
-                    if k == 0:
-                        f.write("%s" % detect[key])
-                    else:
-                        f.write(",%3.2f" % detect[key])
-                f.write("\n")
+                if detect['DETECTION_SCORE'] >= thresh:
+                    num_saved_faces += 1
+                    for k, key in enumerate(header_list):
+                        if k == 0:
+                            f.write("%s" % detect[key])
+                        else:
+                            f.write(",%3.2f" % detect[key])
+                    f.write("\n")
+    return num_saved_faces
 
 
 def load_csv_file(file_path):
@@ -63,12 +67,12 @@ def load_csv_file(file_path):
 
 def load_all_detections(all_txt_paths=[]):
     detect_list = [None] * len(all_txt_paths)
+    num_det_faces = 0
     for i, txt_path in enumerate(all_txt_paths):
         detections_img = load_csv_file(txt_path)
-        # print('detections_img:', detections_img)
-        # sys.exit(0)
+        num_det_faces += len(detections_img)
         detect_list[i] = detections_img
-    return detect_list
+    return detect_list, num_det_faces
 
 
 
@@ -84,16 +88,18 @@ def main(args):
 
     print(f'Searching detection files \'{input_dir}\'')
     all_txt_paths = get_all_files_in_path(input_dir, file_extension=args.input_ext)
-    print('    Found:', len(all_txt_paths))
+    print('    Found:', len(all_txt_paths), 'files')
 
     print(f'Loading individual detections from \'{input_dir}\'')
-    all_detections = load_all_detections(all_txt_paths)
+    all_detections, num_det_faces = load_all_detections(all_txt_paths)
     assert len(all_txt_paths) == len(all_detections)
-    print('    Loaded:', len(all_detections))
+    print('    Loaded:', len(all_detections), 'files')
+    print('    num_det_faces:', num_det_faces)
 
-    output_detections_path = os.path.join(output_dir, 'all_detections.txt')
+    output_detections_path = os.path.join(output_dir, f'all_detections_thresh={args.thresh}.txt')
     print(f'Saving merged file \'{output_detections_path}\'')
-    save_detections_txt(all_detections, output_detections_path)
+    num_saved_faces = save_detections_txt(all_detections, output_detections_path, args.thresh)
+    print('    num_saved_faces:', num_saved_faces)
 
     print('Finished!\n')
 
