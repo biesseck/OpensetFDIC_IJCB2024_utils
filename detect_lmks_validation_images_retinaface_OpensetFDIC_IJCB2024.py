@@ -183,7 +183,25 @@ def crop_resize_face(face_img, bbox, face_size=None):
 
 
 # based on https://github.com/AIML-IfI/uccs-facerec-challenge/blob/main/facerec/face_detection.py
-def save_detections_txt_uccs_format(detections, saving_path):
+def save_detections_txt_format_uccsV1(detections, saving_path):
+    with open(saving_path, "w") as f:
+        # f.write("FILE,DETECTION_SCORE,BB_X,BB_Y,BB_WIDTH,BB_HEIGHT,REYE_X,REYE_Y,LEYE_X,LEYE_Y,NOSE_X,NOSE_Y,RMOUTH_X,RMOUTH_Y,LMOUTH_X,LMOUTH_Y\n")
+        f.write("FACE_ID,IMAGE,SUBJECT_ID,topleft_Y,topleft_X,bottomright_Y,bottomright_X,reye_Y,reye_X,leye_Y,leye_X\n")
+        for image in sorted(detections.keys()):
+            # for (score,bbox,lmark) in detections[image]:
+            for (gt_dets,lmarks) in detections[image]:
+                for bbox_idx in range(len(gt_dets)):
+                    gt_det = gt_dets[bbox_idx]
+                    lmark = lmarks[bbox_idx]
+                    f.write("%d,%s,%d,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (gt_det['FACE_ID'], gt_det['IMAGE'], gt_det['SUBJECT_ID'],
+                                                                                            gt_det['FACE_Y'], gt_det['FACE_X'],
+                                                                                            gt_det['FACE_Y']+gt_det['FACE_HEIGHT'], gt_det['FACE_X']+gt_det['FACE_WIDTH'],
+                                                                                            lmark[1][1], lmark[1][0],   # right eye
+                                                                                            lmark[0][1], lmark[0][0]))  # left eye
+
+
+# based on https://github.com/AIML-IfI/uccs-facerec-challenge/blob/main/facerec/face_detection.py
+def save_detections_txt_format_uccsV2(detections, saving_path):
     with open(saving_path, "w") as f:
         f.write("FILE,DETECTION_SCORE,BB_X,BB_Y,BB_WIDTH,BB_HEIGHT,REYE_X,REYE_Y,LEYE_X,LEYE_Y,NOSE_X,NOSE_Y,RMOUTH_X,RMOUTH_Y,LMOUTH_X,LMOUTH_Y\n")
         for image in sorted(detections.keys()):
@@ -194,12 +212,12 @@ def save_detections_txt_uccs_format(detections, saving_path):
                     bbox = bboxes[bbox_idx]
                     lmark = lmarks[bbox_idx]
                     f.write("%s,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
-                                                                                        bbox[0],bbox[1],bbox[2]-bbox[0],bbox[3]-bbox[1],
-                                                                                        lmark[0][0],lmark[0][1],
-                                                                                        lmark[1][0],lmark[1][1],
-                                                                                        lmark[2][0],lmark[2][1],
-                                                                                        lmark[3][0],lmark[3][1],
-                                                                                        lmark[4][0],lmark[4][1]))
+                                                                                        bbox[0],bbox[1],bbox[2],bbox[3],
+                                                                                        lmark[1][0],lmark[1][1],  # right eye
+                                                                                        lmark[0][0],lmark[0][1],  # left eye
+                                                                                        lmark[2][0],lmark[2][1],  # nose
+                                                                                        lmark[4][0],lmark[4][1],  # right mouth
+                                                                                        lmark[3][0],lmark[3][1])) # left mouth
 
 
 def load_gt_detections(csv_file):
@@ -318,8 +336,11 @@ def crop_align_face(args):
             crop_file_name += '_crop' + str(idx_gt_det).zfill(3) + '.png'
             path_img_bgr_crop = os.path.join(path_subj_img, crop_file_name)
 
-            lmk_file_name = crop_file_name.split('.')[0] + '.txt'
-            path_img_lmk = os.path.join(path_subj_txt, lmk_file_name)
+            lmk_file_format_uccsV1_name = crop_file_name.split('.')[0] + '_format_uccsV1.txt'
+            path_img_lmk_format_uccsV1 = os.path.join(path_subj_txt, lmk_file_format_uccsV1_name)
+
+            lmk_file_format_uccsV2_name = crop_file_name.split('.')[0] + '_format_uccsV2.txt'
+            path_img_lmk_format_uccsV2 = os.path.join(path_subj_txt, lmk_file_format_uccsV2_name)
 
             print(f'    idx_bbox_global {idx_bbox_global}/{num_total_gt_dets} - gt_det {idx_gt_det}/{len(gt_dets_img)}')
 
@@ -342,19 +363,28 @@ def crop_align_face(args):
             print(f'    Saving crop \'{path_img_bgr_crop}\'')
             cv2.imwrite(path_img_bgr_crop, img_bgr_crop)
 
-            # SAVE DETECTIONS AS TXT FILE
+            # SAVE DETECTIONS AS TXT FILE IN FORMAT UCCSv1
+            new_gt_det['IMAGE'] = crop_file_name
+            detections_uccsV1 = {crop_file_name: [([new_gt_det], det_points)]}
+            print(f'    Saving {path_img_lmk_format_uccsV1} ...')
+            save_detections_txt_format_uccsV1(detections_uccsV1, path_img_lmk_format_uccsV1)
+
+            # SAVE DETECTIONS AS TXT FILE IN FORMAT UCCSv2
             confidences = [1.0]
             new_bbox = [(new_gt_det['FACE_X'], new_gt_det['FACE_Y'], new_gt_det['FACE_WIDTH'], new_gt_det['FACE_HEIGHT'])]
-            detections = {crop_file_name: [(confidences, new_bbox, det_points)]}
-            print(f'    Saving {path_img_lmk} ...')
-            save_detections_txt_uccs_format(detections, path_img_lmk)
+            detections_uccsV2 = {crop_file_name: [(confidences, new_bbox, det_points)]}
+            print(f'    Saving {path_img_lmk_format_uccsV2} ...')
+            save_detections_txt_format_uccsV2(detections_uccsV2, path_img_lmk_format_uccsV2)
 
             idx_bbox_global += 1
 
             elapsed_time = time.time() - start_time
             print(f'    Elapsed time: {elapsed_time} seconds')
-            print(f'    {count_no_find_face} images without faces (paths saved in \'{path_file_no_face_detected}\')')
+            print(f'    {count_no_find_face} crops without faces (paths saved in \'{path_file_no_face_detected}\')')
             print('    ------')
+            
+            # if idx_bbox_global == 10: sys.exit(0)
+
         print('---------------------')
 
         '''
