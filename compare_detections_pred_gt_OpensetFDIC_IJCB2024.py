@@ -291,9 +291,10 @@ def main(args):
     # sys.exit(0)
 
     detect_counts_per_img = eval_detections(gt_detections, pred_detections, args.iou)
-
-    # all_img_data = load_imgs_to_memory(all_img_paths)
-
+    # for idx_det_count, det_count_key in enumerate(detect_counts_per_img):
+    #     print(f'{det_count_key}:', detect_counts_per_img[det_count_key])
+    # sys.exit(0)
+    
     start_idx = 0
     if args.start_string != '':
         for idx_img_path, img_path in enumerate(all_img_paths):
