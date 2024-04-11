@@ -8,6 +8,10 @@ import ast
 import cv2
 import csv
 import copy
+import matplotlib.pyplot as plt
+
+
+# FOLDERS_NAMES_TPR_FPR = []
 
 
 def getArgs():
@@ -20,6 +24,7 @@ def getArgs():
     parser.add_argument('--iou', type=float, default=0.5, help='')
     parser.add_argument('--scale-to-save', type=float, default=1.0, help='')
     parser.add_argument('--start-string', type=str, default='', help='')
+    parser.add_argument('--save-images', action='store_true')
 
     args = parser.parse_args()
     return args
@@ -166,6 +171,7 @@ def count_tp_tn_fp_fn_img(gt_detections, pred_detections, iou_threshold):
 def eval_detections(gt_detections, pred_detections, iou_threshold=0.5):
     gt_keys = list(gt_detections.keys())
     pred_keys = list(pred_detections.keys())
+    global_counts = {}
     
     img_counts = {}
     for idx_gt, gt_img_name in enumerate(gt_keys):
@@ -179,10 +185,26 @@ def eval_detections(gt_detections, pred_detections, iou_threshold=0.5):
             num_pred_det = len(img_pred_det)
 
             tp, fp, fn = count_tp_tn_fp_fn_img(img_gt_det, img_pred_det, iou_threshold)
-            img_counts[gt_img_name] = {'num_gt_det':num_gt_det, 'num_pred_det':num_pred_det, 'tp':tp, 'fp':fp, 'fn':fn}
+            tpr = tp / (tp + fn)
+            fpr = fp / (fp + tp)
+
+            img_counts[gt_img_name] = {'num_gt_det':num_gt_det,
+                                       'num_pred_det':num_pred_det,
+                                       'tp':tp, 'fp':fp, 'fn':fn,
+                                       'tpr':tpr, 'fpr':fpr}
             # print(f'img_counts[\'{gt_img_name}\']', img_counts[gt_img_name])
+
+    heatmap_tpr_fpr = np.zeros((11,11), dtype=int)
+    for idx_pred, pred_img_name in enumerate(list(img_counts.keys())):
+        fpr_img = img_counts[pred_img_name]['fpr']
+        tpr_img = img_counts[pred_img_name]['tpr']
+        idx_x = int(np.floor(fpr_img*10))
+        idx_y = int(np.floor(tpr_img*10))
+        heatmap_tpr_fpr[idx_x][idx_y] += 1
+    global_counts['heatmap_tpr_fpr'] = heatmap_tpr_fpr
+
     # sys.exit(0)
-    return img_counts
+    return img_counts, global_counts
 
 
 def draw_bbox(img, bbox, color, thickness=6):
@@ -206,6 +228,13 @@ def draw_lmks(img, lmks, thickness=6):
             color = (255,191,0)  # blue
         cv2.circle(result_img, (int(round(lmks[l][0])), int(round(lmks[l][1]))), 1, color, thickness)
     return result_img
+
+
+def get_folder_name_by_metric_fpr_tpr(metrics_img_pred_det):
+    fpr_round = int(np.floor(metrics_img_pred_det['fpr']*10)) / 10
+    tpr_round = int(np.floor(metrics_img_pred_det['tpr']*10)) / 10
+    folder_name = f"fpr={fpr_round}_tpr={tpr_round}"
+    return folder_name
 
 
 def save_imgs_with_detections(all_img_paths, gt_dets, pred_dets, detect_counts_per_img, output_dir, scale=1.0, start_idx=0):
@@ -246,8 +275,16 @@ def save_imgs_with_detections(all_img_paths, gt_dets, pred_dets, detect_counts_p
 
                 img_bgr = draw_bbox(img_bgr, pred_bbox, color_pred, thickness=6)
                 img_bgr = draw_lmks(img_bgr, pred_lmk, thickness=10)
+            
+            metrics_img_pred_det = detect_counts_per_img[img_file_name]
+            metric_folder_name = get_folder_name_by_metric_fpr_tpr(metrics_img_pred_det)
+        else:
+            metric_folder_name = f'fn={len(img_gt_det)}'
         
-        path_output_img = os.path.join(output_dir, img_file_name)
+        path_metric_folder = os.path.join(output_dir, metric_folder_name)
+        os.makedirs(path_metric_folder, exist_ok=True)
+
+        path_output_img = os.path.join(path_metric_folder, img_file_name)
         print(f'{idx_img}/{len(all_img_paths)} - Saving image with detections: \'{path_output_img}\'')
 
         if scale != 1.0:
@@ -258,6 +295,26 @@ def save_imgs_with_detections(all_img_paths, gt_dets, pred_dets, detect_counts_p
     print('\nFinished!')
 
 
+def plot_heatmap_tpr_fpr(array, title, path):
+    array_ = np.flip(np.rot90(array), axis=0)
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(array_, cmap='gray', interpolation='nearest', aspect='auto', origin='lower')
+    plt.title(title)
+    plt.colorbar()
+    plt.xlabel('False Positive Ratio - FPR = FP/(TP + FP)')
+    plt.ylabel('True Positive Rate - TPR = TP/(TP + FN)\n(A.K.A. Recall, Sensitivity)')
+
+    for i in range(array.shape[0]):
+        for j in range(array.shape[1]):
+            plt.text(j, i, str(array[j, i]), ha='center', va='center', color='red')
+
+    x_ticks = np.array([i/10 for i in range(0, 11, 1)])
+    y_ticks = np.array([i/10 for i in range(0, 11, 1)])
+    plt.xticks(np.arange(0, 11, 1), x_ticks)
+    plt.yticks(np.arange(0, 11, 1), y_ticks)
+    plt.savefig(path)
+    plt.close()
 
 
 
@@ -290,20 +347,31 @@ def main(args):
     # print('len(pred_detections[\'0006c02f81b58512e7a28059650b99f2.jpg\']):', len(pred_detections['0006c02f81b58512e7a28059650b99f2.jpg']))
     # sys.exit(0)
 
-    detect_counts_per_img = eval_detections(gt_detections, pred_detections, args.iou)
+    detect_counts_per_img, detect_counts_global = eval_detections(gt_detections, pred_detections, args.iou)
     # for idx_det_count, det_count_key in enumerate(detect_counts_per_img):
     #     print(f'{det_count_key}:', detect_counts_per_img[det_count_key])
     # sys.exit(0)
-    
-    start_idx = 0
-    if args.start_string != '':
-        for idx_img_path, img_path in enumerate(all_img_paths):
-            if args.start_string in img_path:
-                start_idx = idx_img_path
+    # print('detect_counts_global:')
+    # print(detect_counts_global)
+    # sys.exit(0)
 
-    os.makedirs(output_dir, exist_ok=True)
-    save_imgs_with_detections(all_img_paths, gt_detections, pred_detections,
-                              detect_counts_per_img, output_dir, args.scale_to_save, start_idx)
+    title = 'Heatmap Face Detections - UCCS Watchlist Challenge (IJCB 2024)'
+    char_file_name = 'heatmap_tpr_fpr.png'
+    path_chart = os.path.join(output_dir, char_file_name)
+    print(f'\nSaving \'{path_chart}\'')
+    plot_heatmap_tpr_fpr(detect_counts_global['heatmap_tpr_fpr'], title, path_chart)
+    # sys.exit(0)
+    
+    if args.save_images:
+        start_idx = 0
+        if args.start_string != '':
+            for idx_img_path, img_path in enumerate(all_img_paths):
+                if args.start_string in img_path:
+                    start_idx = idx_img_path
+
+        os.makedirs(output_dir, exist_ok=True)
+        save_imgs_with_detections(all_img_paths, gt_detections, pred_detections,
+                                detect_counts_per_img, output_dir, args.scale_to_save, start_idx)
 
 
     # draw_gt_pred_detections(all_img_paths, gt_detections, pred_detections)
