@@ -355,6 +355,8 @@ def main(args):
     # print(detect_counts_global)
     # sys.exit(0)
 
+    os.makedirs(output_dir, exist_ok=True)
+
     title = 'Heatmap Face Detections - UCCS Watchlist Challenge (IJCB 2024)'
     char_file_name = 'heatmap_tpr_fpr.png'
     path_chart = os.path.join(output_dir, char_file_name)
