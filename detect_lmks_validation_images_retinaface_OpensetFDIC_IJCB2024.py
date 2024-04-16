@@ -35,6 +35,7 @@ def getArgs():
     parser.add_argument('--align_face', action='store_true', help='')
     parser.add_argument('--draw_bbox_lmk', action='store_true', help='')
     parser.add_argument('--force_lmk', action='store_true', help='')
+    parser.add_argument('--coords_with_respect_to_crop', action='store_true', help='')
 
     parser.add_argument('--str_begin', default='', type=str, help='Substring to find and start processing')
     parser.add_argument('--str_end', default='', type=str, help='Substring to find and stop processing')
@@ -249,69 +250,33 @@ def crop_gt_bbox(img_bgr, gt_det, percent_expand=0.25):
     w_expand = w*percent_expand
     h_expand = h*percent_expand
 
-    x1 = max(x1-w_expand, 0)
-    y1 = max(y1-h_expand, 0)
-    x2 = min(x2+w_expand, img_bgr.shape[1])
-    y2 = min(y2+h_expand, img_bgr.shape[0])
-    img_bgr_crop = img_bgr[round(y1):round(y2), round(x1):round(x2)]
+    x1 = round(max(x1-w_expand, 0))
+    y1 = round(max(y1-h_expand, 0))
+    x2 = round(min(x2+w_expand, img_bgr.shape[1]))
+    y2 = round(min(y2+h_expand, img_bgr.shape[0]))
+    img_bgr_crop = img_bgr[y1:y2, x1:x2]
 
-    new_gt_det = {}
-    new_gt_det['FACE_ID'] = gt_det['FACE_ID']
-    new_gt_det['SUBJECT_ID'] = gt_det['SUBJECT_ID']
-    new_gt_det['FACE_X'] = gt_det['FACE_X'] - x1
-    new_gt_det['FACE_Y'] = gt_det['FACE_Y'] - y1
-    new_gt_det['FACE_WIDTH'] = gt_det['FACE_WIDTH']
-    new_gt_det['FACE_HEIGHT'] = gt_det['FACE_HEIGHT']
+    new_gt_det_wrt_crop = {}
+    new_gt_det_wrt_crop['FACE_ID'] = gt_det['FACE_ID']
+    new_gt_det_wrt_crop['SUBJECT_ID'] = gt_det['SUBJECT_ID']
+    new_gt_det_wrt_crop['FACE_X'] = gt_det['FACE_X'] - x1
+    new_gt_det_wrt_crop['FACE_Y'] = gt_det['FACE_Y'] - y1
+    new_gt_det_wrt_crop['FACE_WIDTH'] = gt_det['FACE_WIDTH']
+    new_gt_det_wrt_crop['FACE_HEIGHT'] = gt_det['FACE_HEIGHT']
 
-    return img_bgr_crop, new_gt_det
+    new_gt_det_wrt_whole_img = {}
+    new_gt_det_wrt_whole_img['FACE_ID'] = gt_det['FACE_ID']
+    new_gt_det_wrt_whole_img['SUBJECT_ID'] = gt_det['SUBJECT_ID']
+    new_gt_det_wrt_whole_img['FACE_X'] = y1
+    new_gt_det_wrt_whole_img['FACE_Y'] = x1
+    new_gt_det_wrt_whole_img['FACE_WIDTH'] = gt_det['FACE_WIDTH']
+    new_gt_det_wrt_whole_img['FACE_HEIGHT'] = gt_det['FACE_HEIGHT']
+
+    return img_bgr_crop, new_gt_det_wrt_crop, new_gt_det_wrt_whole_img
 
 
-def crop_align_face(args):
-    print(f'Loading groundtruth detections \'{args.gt_path}\'')
-    gt_detections, num_total_gt_dets = load_gt_detections(args.gt_path)
-
-    input_dir = args.input_path.rstrip('/')
-    if not os.path.exists(input_dir):
-        print(f'The input path doesn\'t exists: {input_dir}')
-        sys.exit(0)
-
-    output_dir = args.output_path.rstrip('/')
-    if output_dir == '':
-        output_dir = input_dir + '_bbox_lmks_retinaface'
-    os.makedirs(output_dir, exist_ok=True)
-
-    output_imgs = os.path.join(output_dir.rstrip('/'), 'imgs')
-    os.makedirs(output_imgs, exist_ok=True)
-
-    output_txt = os.path.join(output_dir.rstrip('/'), 'txt')
-    os.makedirs(output_txt, exist_ok=True)
-
-    if args.gpu == -1:
-        ctx = mx.cpu()
-    else:
-        ctx = mx.gpu(args.gpu)
-
-    current_datetime = datetime.datetime.now()
-    formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-    file_no_face_detected = f'files_no_face_detected_thresh={args.thresh}_starttime={formatted_datetime}.txt'
-    path_file_no_face_detected = os.path.join(output_dir, file_no_face_detected)
-
-    det_path = './retinaface/model/retinaface-R50/R50'
-    print(f'\nLoading face detector \'{det_path}\'...')
-    detector = RetinaFace(det_path, 0, args.gpu, 'net3')
-
+def detect_lmk_with_respect_to_crop(detector, all_img_paths, gt_detections, output_imgs, output_txt, num_total_gt_dets, path_file_no_face_detected):
     count_no_find_face = 0
-    count_crop_images = 0
-
-    ext = args.input_ext
-    all_img_paths = []
-    if os.path.isdir(input_dir):
-        print(f'\nSearching \'{ext}\' files with pattern \'{args.str_pattern}\' in path \'{input_dir}\' ...')
-        all_img_paths = get_all_files_in_path(input_dir, ext, args.str_pattern)    
-
-    assert len(all_img_paths) > 0, f'No files found with extention \'{ext}\' and pattern \'{args.str_pattern}\' in input \'{input_dir}\''
-    print(f'{len(all_img_paths)} files found\n')
-
     idx_bbox_global = 0
     for idx_img, img_path in enumerate(all_img_paths):
         print(f'Img {idx_img}/{len(all_img_paths)} - Reading {img_path} ...')
@@ -322,7 +287,7 @@ def crop_align_face(args):
 
         for idx_gt_det, gt_det in enumerate(gt_dets_img):
             start_time = time.time()
-            img_bgr_crop, new_gt_det = crop_gt_bbox(img_bgr, gt_det, percent_expand=0.4)
+            img_bgr_crop, new_gt_det, new_gt_det_wrt_whole_img = crop_gt_bbox(img_bgr, gt_det, percent_expand=0.4)
             
             det_bboxes, det_points = detector.detect(img_bgr_crop, args.thresh, args.scales, do_flip=False)
 
@@ -386,82 +351,147 @@ def crop_align_face(args):
             # if idx_bbox_global == 10: sys.exit(0)
 
         print('---------------------')
+    return count_no_find_face
 
-        '''
-        print(f'Detecting face...')
-        ret = detector.detect(img_bgr, args.thresh, args.scales, do_flip=False)
 
-        bbox, points = ret
-        if bbox.shape[0] == 0:
-            print(f'NO FACE DETECTED IN IMAGE \'{img_path}\'')
-            print(f'Adding path to file \'{path_file_no_face_detected}\' ...')
-            add_string_end_file(path_file_no_face_detected, img_path)
-            count_no_find_face += 1
+def detect_lmk_keep_whole_image(detector, all_img_paths, gt_detections, output_imgs, output_txt, num_total_gt_dets, path_file_no_face_detected):
+    count_no_find_face = 0
+    idx_bbox_global = 0
+    for idx_img, img_path in enumerate(all_img_paths):
+        print(f'Img {idx_img}/{len(all_img_paths)} - Reading {img_path} ...')
+        img_bgr = cv2.imread(img_path)
 
-            if args.force_lmk:
-                bbox, points = get_generic_bbox_lmk(img_bgr)
-                count_crop_images -= 1
-            else:
-                elapsed_time = time.time() - start_time
-                print(f'Elapsed time: {elapsed_time} seconds')
-                print('-------------')
-                continue
+        img_file_name = os.path.basename(img_path)
+        gt_dets_img = gt_detections[img_file_name]
+        detections_uccsV1 = {}
+        detections_uccsV2 = {}
 
-        confidences = [bbox[idx, 4] for idx in range(bbox.shape[0])]
-        print('Confidences:', confidences)
+        det_lmk_one_face_crop_uccsV1 = []
+        det_lmk_one_face_crop_uccsV2 = []
 
-        face_img_copy = img_bgr.copy()
-        for bbox_idx in range(bbox.shape[0]):
-            bbox_ = bbox[bbox_idx, 0:4]
-            points_ = points[bbox_idx, :].reshape((5, 2))
-            conf_ = bbox[bbox_idx, 4]
+        img_bgr_with_bbox_lmks = None
+        for idx_gt_det, gt_det in enumerate(gt_dets_img):
+            start_time = time.time()
+            print(f'    Cropping ground truth face bbox...')
+            img_bgr_crop, new_gt_det, new_gt_det_wrt_whole_img = crop_gt_bbox(img_bgr, gt_det, percent_expand=0.4)
+            
+            print(f'    idx_bbox_global {idx_bbox_global}/{num_total_gt_dets} - gt_det {idx_gt_det}/{len(gt_dets_img)}')
+            print(f'    Detecting face...')
+            det_bboxes, det_points = detector.detect(img_bgr_crop, args.thresh, args.scales, do_flip=False)
 
-            if args.align_face:
-                print(f'Aligning and cropping to size {args.face_size}x{args.face_size} ...')
-                face = face_align.norm_crop(img_bgr, landmark=points_, image_size=args.face_size)
-            else:
-                face = crop_resize_face(img_bgr, bbox_, args.face_size)
+            if det_bboxes.shape[0] > 0:
+                # Keep only 1 face per gt bbox and adjust landmarks coords with respect to whole image
+                det_points = np.expand_dims(det_points[0], axis=0)
+                for idx_det_point, det_point in enumerate(det_points[0]):
+                    det_point[0] += new_gt_det_wrt_whole_img['FACE_Y']
+                    det_point[1] += new_gt_det_wrt_whole_img['FACE_X']
+            else: # if no face was detected
+                crop_file_name = img_file_name + ', FACE_ID=' + str(gt_det['FACE_ID']) + ', SUBJECT_ID=' + str(gt_det['SUBJECT_ID'])
+                print(f'    NO FACE DETECTED IN CROP \'{crop_file_name}\'')
+                print(f'    Adding path to file \'{path_file_no_face_detected}\' ...')
+                add_string_end_file(path_file_no_face_detected, crop_file_name)
+                count_no_find_face += 1
 
-            # face_name = '%s.png'%(file_name.split('.')[0])
-            output_path_path = img_path.replace(input_dir, output_imgs)
-            face_name = output_path_path.split('/')[-1].split('.')[0] + \
-                        f'_bbox{str(bbox_idx).zfill(2)}' + \
-                        f'_conf{conf_}' + '.png'
-            output_path_path = os.path.join(os.path.dirname(output_path_path), face_name)
-            os.makedirs(os.path.dirname(output_path_path), exist_ok=True)
+                new_bbox = (gt_det['FACE_X'], gt_det['FACE_Y'], gt_det['FACE_WIDTH'], gt_det['FACE_HEIGHT'])
+                synth_points = get_generic_lmk(new_bbox)
+                det_points = synth_points
 
             if args.draw_bbox_lmk:
-                face_img_copy = draw_bbox(face_img_copy, bbox_)
-                face_img_copy = draw_lmks(face_img_copy, points_)
-                face_name = '%s_all_bboxes.jpg'%(img_path.split('/')[-1].split('.')[0])
-                file_path_bbox_save = os.path.join(os.path.dirname(output_path_path), face_name)
-                if bbox_idx == bbox.shape[0]-1:
-                    print(f'Saving {file_path_bbox_save}')
-                    cv2.imwrite(file_path_bbox_save, face_img_copy)
+                if img_bgr_with_bbox_lmks is None: img_bgr_with_bbox_lmks = img_bgr.copy()
+                new_bbox = (gt_det['FACE_X'], gt_det['FACE_Y'], gt_det['FACE_WIDTH'], gt_det['FACE_HEIGHT'])
+                img_bgr_with_bbox_lmks = draw_bbox(img_bgr_with_bbox_lmks, new_bbox, color=(0,255,0), thickness=6)
+                img_bgr_with_bbox_lmks = draw_lmks(img_bgr_with_bbox_lmks, det_points.reshape((5, 2)))
 
-            print(f'Saving {output_path_path} ...')
-            cv2.imwrite(output_path_path, face)
+            gt_det['IMAGE'] = img_file_name
+            det_lmk_one_face_crop_uccsV1.append(([gt_det], det_points))
+            
+            confidences = [1.0]
+            new_bbox = [(gt_det['FACE_X'], gt_det['FACE_Y'], gt_det['FACE_WIDTH'], gt_det['FACE_HEIGHT'])]
+            det_lmk_one_face_crop_uccsV2.append((confidences, new_bbox, det_points))
 
-        # SAVE DETECTIONS AS TXT FILE
-        output_txt_name = img_path.split('/')[-1].replace(args.input_ext, '.txt')
-        output_txt_path = os.path.join(output_txt, output_txt_name)
-        img_file_name = img_path.split('/')[-1]
-        detections = {img_file_name: [(confidences, bbox, points)]}
-        print(f'Saving {output_txt_path} ...')
-        save_detections_txt(detections, output_txt_path)
+            idx_bbox_global += 1
+
+            elapsed_time = time.time() - start_time
+            print(f'    Elapsed time: {elapsed_time} seconds')
+            print(f'    {count_no_find_face} crops without faces (paths saved in \'{path_file_no_face_detected}\')')
+            print('    ------')
+        
+        lmk_file_format_uccsV1_name = img_file_name.split('.')[0] + '_format_uccsV1.txt'
+        path_img_lmk_format_uccsV1 = os.path.join(output_txt, lmk_file_format_uccsV1_name)
+
+        lmk_file_format_uccsV2_name = img_file_name.split('.')[0] + '_format_uccsV2.txt'
+        path_img_lmk_format_uccsV2 = os.path.join(output_txt, lmk_file_format_uccsV2_name)
+
+        # SAVE DETECTIONS AS TXT FILE IN FORMAT UCCSv1
+        detections_uccsV1[img_file_name] = det_lmk_one_face_crop_uccsV1
+        print(f'    Saving {path_img_lmk_format_uccsV1} ...')
+        save_detections_txt_format_uccsV1(detections_uccsV1, path_img_lmk_format_uccsV1)
+
+        # SAVE DETECTIONS AS TXT FILE IN FORMAT UCCSv2
+        detections_uccsV2[img_file_name] = det_lmk_one_face_crop_uccsV2
+        print(f'    Saving {path_img_lmk_format_uccsV2} ...')
+        save_detections_txt_format_uccsV2(detections_uccsV2, path_img_lmk_format_uccsV2)
+
+        if args.draw_bbox_lmk:
+            # SAVE WHOLE IMAGE
+            path_whole_img_with_bbox_lmks = os.path.join(output_imgs, img_file_name)
+            print(f'    Saving whole image \'{path_whole_img_with_bbox_lmks}\'')
+            cv2.imwrite(path_whole_img_with_bbox_lmks, img_bgr_with_bbox_lmks)
+
+        print('---------------------')
+    return count_no_find_face
 
 
-        elapsed_time = time.time() - start_time
-        print(f'Elapsed time: {elapsed_time} seconds')
-        print(f'{count_no_find_face} images without faces (paths saved in \'{path_file_no_face_detected}\')')
-        print('-------------')
+def main_detect_lmk(args):
+    print(f'Loading groundtruth detections \'{args.gt_path}\'')
+    gt_detections, num_total_gt_dets = load_gt_detections(args.gt_path)
 
-        count_crop_images += 1
-        '''
+    input_dir = args.input_path.rstrip('/')
+    if not os.path.exists(input_dir):
+        print(f'The input path doesn\'t exists: {input_dir}')
+        sys.exit(0)
+
+    output_dir = args.output_path.rstrip('/')
+    if output_dir == '':
+        output_dir = input_dir + '_bbox_lmks_retinaface'
+    os.makedirs(output_dir, exist_ok=True)
+
+    output_imgs = os.path.join(output_dir.rstrip('/'), 'imgs')
+    os.makedirs(output_imgs, exist_ok=True)
+
+    output_txt = os.path.join(output_dir.rstrip('/'), 'txt')
+    os.makedirs(output_txt, exist_ok=True)
+
+    if args.gpu == -1:
+        ctx = mx.cpu()
+    else:
+        ctx = mx.gpu(args.gpu)
+
+    current_datetime = datetime.datetime.now()
+    formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+    file_no_face_detected = f'files_no_face_detected_thresh={args.thresh}_starttime={formatted_datetime}.txt'
+    path_file_no_face_detected = os.path.join(output_dir, file_no_face_detected)
+
+    det_path = './retinaface/model/retinaface-R50/R50'
+    print(f'\nLoading face detector \'{det_path}\'...')
+    detector = RetinaFace(det_path, 0, args.gpu, 'net3')
+
+    ext = args.input_ext
+    all_img_paths = []
+    if os.path.isdir(input_dir):
+        print(f'\nSearching \'{ext}\' files with pattern \'{args.str_pattern}\' in path \'{input_dir}\' ...')
+        all_img_paths = get_all_files_in_path(input_dir, ext, args.str_pattern)    
+
+    assert len(all_img_paths) > 0, f'No files found with extention \'{ext}\' and pattern \'{args.str_pattern}\' in input \'{input_dir}\''
+    print(f'{len(all_img_paths)} files found\n')
+
+    if not args.coords_with_respect_to_crop:
+        count_no_find_face = detect_lmk_keep_whole_image(detector, all_img_paths, gt_detections, output_imgs, output_txt, num_total_gt_dets, path_file_no_face_detected)
+    else:
+        count_no_find_face = detect_lmk_with_respect_to_crop(detector, all_img_paths, gt_detections, output_imgs, output_txt, num_total_gt_dets, path_file_no_face_detected)
 
     print('-------------------------------')
     print('Finished')
-    print(f'{count_crop_images}/{len(all_img_paths)} images with faces detected.')
     print(f'{count_no_find_face}/{len(all_img_paths)} images without faces.')
     if count_no_find_face > 0:
         print(f'   Check in \'{path_file_no_face_detected}\'')
@@ -469,4 +499,4 @@ def crop_align_face(args):
 
 if __name__ == '__main__':
     args = getArgs()
-    crop_align_face(args)
+    main_detect_lmk(args)
