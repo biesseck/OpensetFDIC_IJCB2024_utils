@@ -19,6 +19,7 @@ def getArgs():
     parser.add_argument('--input_ext', type=str, default='_format_uccsV1.txt', help='')
     parser.add_argument('--output_path', type=str, default='', help='the dir the cropped faces of your dataset where to save')
     parser.add_argument('--thresh', type=float, default=0.01, help='threshold for face detection')
+    parser.add_argument('--save_separated_subj_ids_file', action='store_true', help='')
 
     args = parser.parse_args()
     return args
@@ -68,6 +69,27 @@ def save_detections_txt(detections, saving_path, thresh):
                 num_saved_faces += 1
 
     return num_saved_faces
+
+
+def save_subj_ids_txt(detections, saving_path, thresh):
+    header_list = list(detections[0][0].keys())
+    assert 'SUBJECT_ID' in header_list, f'Error, file detections in current format do not contain the column \'SUBJECT_ID\''
+    header_str = 'SUBJECT_ID'
+    # print('header:', header)
+    # sys.exit(0)
+    num_saved_ids = 0
+    with open(saving_path, "w") as f:
+        # header = "FILE,DETECTION_SCORE,BB_X,BB_Y,BB_WIDTH,BB_HEIGHT,REYE_X,REYE_Y,LEYE_X,LEYE_Y,NOSE_X,NOSE_Y,RMOUTH_X,RMOUTH_Y,LMOUTH_X,LMOUTH_Y"
+        # header_list = header.split(',')
+        f.write(header_str + "\n")
+        for d, detects in enumerate(detections):
+            for i, detect in enumerate(detects):
+                f.write("%s" % detect[header_str])
+                f.write("\n")
+
+                num_saved_ids += 1
+
+    return num_saved_ids
 
 
 def load_csv_file(file_path):
@@ -129,11 +151,15 @@ def main(args):
     # print('all_detections:', all_detections)
     # sys.exit(0)
 
-    output_detections_path = os.path.join(output_dir, f'all_detections_thresh={args.thresh}.txt')
+    output_detections_path = os.path.join(output_dir, f"all_detections_thresh={args.thresh}_{args.input_ext.strip('_').split('.')[0]}.txt")
     print(f'Saving merged file \'{output_detections_path}\'')
     num_saved_faces = save_detections_txt(all_detections, output_detections_path, args.thresh)
     print('    num_saved_faces:', num_saved_faces)
     # sys.exit(0)
+
+    if args.save_separated_subj_ids_file:
+        output_subj_id_path = os.path.join(output_dir, f"subj_ids_all_detections_thresh={args.thresh}.txt")
+        save_subj_ids_txt(all_detections, output_subj_id_path, args.thresh)
 
     print('Finished!\n')
 
