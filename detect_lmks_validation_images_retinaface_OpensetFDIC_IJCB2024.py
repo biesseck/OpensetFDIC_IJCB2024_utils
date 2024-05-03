@@ -212,7 +212,8 @@ def save_detections_txt_format_uccsV2(detections, saving_path):
                     score = scores[bbox_idx]
                     bbox = bboxes[bbox_idx]
                     lmark = lmarks[bbox_idx]
-                    f.write("%s,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
+                    # f.write("%s,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
+                    f.write("%s,%3.20f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
                                                                                         bbox[0],bbox[1],bbox[2],bbox[3],
                                                                                         lmark[1][0],lmark[1][1],  # right eye
                                                                                         lmark[0][0],lmark[0][1],  # left eye

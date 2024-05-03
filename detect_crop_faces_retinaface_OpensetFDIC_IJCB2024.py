@@ -24,7 +24,7 @@ from insightface.utils import face_align
 def getArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_list', type=str, default='', help='')
-    parser.add_argument('--input_path', type=str, default='/datasets2/frcsyn_wacv2024/datasets/synthetic/GANDiffFace', help='the dir your dataset of face which need to crop')
+    parser.add_argument('--input_path', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/validation_images', help='the dir your dataset of face which need to crop')
     parser.add_argument('--input_ext', type=str, default='.jpg', help='')
     parser.add_argument('--output_path', type=str, default='', help='the dir the cropped faces of your dataset where to save')
     parser.add_argument('--gpu', default=-1, type=int, help='gpu id， when the id == -1, use cpu')
@@ -176,7 +176,8 @@ def save_detections_txt(detections, saving_path):
                     score = scores[bbox_idx]
                     bbox = bboxes[bbox_idx]
                     lmark = lmarks[bbox_idx]
-                    f.write("%s,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
+                    # f.write("%s,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
+                    f.write("%s,%3.20f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f,%3.2f\n" % (image, score,
                                                                                         bbox[0],bbox[1],bbox[2]-bbox[0],bbox[3]-bbox[1],
                                                                                         lmark[0][0],lmark[0][1],
                                                                                         lmark[1][0],lmark[1][1],

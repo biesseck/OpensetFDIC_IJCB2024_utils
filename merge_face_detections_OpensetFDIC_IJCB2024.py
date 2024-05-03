@@ -45,6 +45,8 @@ def save_detections_txt(detections, saving_path, thresh):
                     for k, key in enumerate(header_list):
                         if k == 0:
                             f.write("%s" % detect[key])
+                        elif key == 'DETECTION_SCORE':
+                            f.write(",%3.20f" % detect[key])
                         else:
                             f.write(",%3.2f" % detect[key])
                     f.write("\n")
