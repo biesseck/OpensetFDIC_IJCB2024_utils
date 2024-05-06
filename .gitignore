@@ -161,4 +161,5 @@ cython_debug/
 
 
 retinaface/model/*
+models/*
 
