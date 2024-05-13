@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 
 def getArgs():
@@ -37,11 +37,15 @@ def getArgs():
 
 def get_all_files_in_path(folder_path, file_extension='.jpg', pattern=''):
     file_list = []
+    num_found_files = 0
     for root, _, files in os.walk(folder_path):
         for filename in files:
             path_file = os.path.join(root, filename)
             if pattern in path_file and path_file.endswith(file_extension):
                 file_list.append(path_file)
+                num_found_files += 1
+                print(f'    num_found_files {num_found_files}', end='\r')
+    print('')
     file_list.sort()
     return file_list
 
@@ -87,7 +91,7 @@ def load_detections(csv_file):
             for row in reader:
                 row_dict = {}
                 for i, value in enumerate(row):
-                    if headers[i] == 'FILE' or headers[i] == 'SUBJECT_ID':
+                    if headers[i] == 'FILE' or headers[i] == 'SUBJECT_ID' or headers[i] == 'TYPE':
                         row_dict[headers[i]] = value
                     else:
                         row_dict[headers[i]] = float(value)
@@ -171,6 +175,41 @@ def compute_similarity_between_embeddings(embedds, mean_embedd):
     return embedds_sims
 
 
+def compute_all_similarities_between_embeddings(embeddings1, embeddings2):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if isinstance(embeddings1, np.ndarray):
+         embeddings1 = torch.from_numpy(embeddings1)
+    if isinstance(embeddings2, np.ndarray):
+         embeddings2 = torch.from_numpy(embeddings2)
+
+    embeddings1 = embeddings1.to(device)
+    embeddings2 = embeddings2.to(device)
+    
+    embeddings1_normalized = F.normalize(embeddings1, p=2, dim=1)
+    embeddings2_normalized = F.normalize(embeddings2, p=2, dim=1)
+
+    try:
+        dot_product = torch.mm(embeddings1_normalized, embeddings2_normalized.t())
+    except torch.cuda.OutOfMemoryError:
+        print(f'    Allocating matrix {len(embeddings1)}x{len(embeddings2)}...')
+        dot_product = torch.zeros(len(embeddings1), len(embeddings2))
+        for idx1 in range(len(embeddings1)):
+            print(f'    Computing cosine similarities {idx1}/{len(embeddings1)}', end='\r')
+            # print(f'    \nembeddings1_normalized[idx1].size():', embeddings1_normalized[idx1].size())
+            dot_product[idx1] = torch.mm(torch.unsqueeze(embeddings1_normalized[idx1],0), embeddings2_normalized.t())
+        print('')
+
+    cosine_similarities = dot_product.cpu().detach().numpy()
+    return cosine_similarities
+
+
+def get_mins_maxs_array(array, axis=1):
+    mins = array.min(axis=axis)
+    maxs = array.max(axis=axis)
+    return mins, maxs
+
+
 def save_histograms(data=[], legend=[''], title='', save_path='', xlim=None, ylim=None, bar_colors=None, bar_transparencies=None, bins=(50), figsize=(10, 6)):
     num_histograms = len(data)
 
@@ -180,7 +219,7 @@ def save_histograms(data=[], legend=[''], title='', save_path='', xlim=None, yli
 
     if not bar_transparencies:
         # bar_transparencies = [0.5] * num_histograms
-        bar_transparencies = [0.9, 0.5]
+        bar_transparencies = [0.5, 0.5]
 
     if len(data) != len(legend) or len(data) != len(bar_colors) or len(data) != len(bar_transparencies):
         print("Mismatch in lengths of data, legend, bar_colors, or bar_transparencies lists.")
@@ -289,6 +328,8 @@ def main(args):
     print('    validation_gt_mean_embedd.shape:', validation_gt_mean_embedd.shape)
     cos_sims_validationGtEmbedds_to_galleryGtMeanEmbedd = compute_similarity_between_embeddings(validation_gt_embedds, gallery_gt_mean_embedd)
     print('    cos_sims_validationGtEmbedds_to_galleryGtMeanEmbedd.shape:', cos_sims_validationGtEmbedds_to_galleryGtMeanEmbedd.shape)
+    cos_sims_validationGtEmbedds_to_validationGtMeanEmbedd = compute_similarity_between_embeddings(validation_gt_embedds, validation_gt_mean_embedd)
+    print('    cos_sims_validationGtEmbedds_to_validationGtMeanEmbedd.shape:', cos_sims_validationGtEmbedds_to_validationGtMeanEmbedd.shape)
     # sys.exit(0)
 
     print(f'\nLoading validation embeddings detections \'{args.validation_embedd_detect_pred}\'')
@@ -298,23 +339,133 @@ def main(args):
     print('    validation_pred_mean_embedd.shape:', validation_pred_mean_embedd.shape)
     cos_sims_validationPredEmbedds_to_galleryGtMeanEmbedd = compute_similarity_between_embeddings(validation_pred_embedds, gallery_gt_mean_embedd)
     print('    cos_sims_validationPredEmbedds_to_galleryGtMeanEmbedd.shape:', cos_sims_validationPredEmbedds_to_galleryGtMeanEmbedd.shape)
+    cos_sims_validationPredEmbedds_to_validationGtMeanEmbedd = compute_similarity_between_embeddings(validation_pred_embedds, validation_gt_mean_embedd)
+    print('    cos_sims_validationPredEmbedds_to_validationGtMeanEmbedd.shape:', cos_sims_validationPredEmbedds_to_validationGtMeanEmbedd.shape)
     # sys.exit(0)
 
 
     hist_file_name = 'histogram_gallery_validation_cosine_similarities.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[cos_sims_galleryGtEmbedds_to_galleryGtMeanEmbedd, cos_sims_validationGtEmbedds_to_galleryGtMeanEmbedd, cos_sims_validationPredEmbedds_to_galleryGtMeanEmbedd],
-                    legend=['galleryGtEmbedds_to_galleryGtMeanEmbedd', 'validationGtEmbedds_to_galleryGtMeanEmbedd', 'validationPredEmbedds_to_galleryGtMeanEmbedd'],
+    save_histograms(data=[cos_sims_validationPredEmbedds_to_galleryGtMeanEmbedd, cos_sims_validationGtEmbedds_to_galleryGtMeanEmbedd, cos_sims_galleryGtEmbedds_to_galleryGtMeanEmbedd],
+                    legend=['validationPredEmbedds_to_galleryGtMeanEmbedd', 'validationGtEmbedds_to_galleryGtMeanEmbedd', 'galleryGtEmbedds_to_galleryGtMeanEmbedd'],
                     title='Histograms - Cosine similarities',
-                    # xlim=(0, 700),
-                    bar_colors = ['g', 'b', 'r'],
-                    bar_transparencies = (0.9, 0.5, 0.3),
+                    xlim=(-1.1, 1.1),
+                    ylim=(0, 30000),
+                    bar_colors = ['r', 'b', 'g'],
+                    bar_transparencies = (0.5, 0.5, 0.5),
                     bins=(50, 50, 50),
                     save_path=hist_file_path)
 
 
+    hist_file_name = 'histogram_validation_validationGT_cosine_similarities.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[cos_sims_validationPredEmbedds_to_validationGtMeanEmbedd, cos_sims_validationGtEmbedds_to_validationGtMeanEmbedd, cos_sims_galleryGtEmbedds_to_galleryGtMeanEmbedd],
+                    legend=['validationPredEmbedds_to_validationGtMeanEmbedd', 'validationGtEmbedds_to_validationGtMeanEmbedd', 'galleryGtEmbedds_to_galleryGtMeanEmbedd'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    ylim=(0, 30000),
+                    bar_colors = ['r', 'b', 'g'],
+                    bar_transparencies = (0.5, 0.5, 0.5),
+                    bins=(50, 50, 50),
+                    save_path=hist_file_path)
 
+
+    ##############################
+
+    print(f'\nComputing cosine similarities between \'gallery_gt_embedds\' and \'gallery_gt_embedds\'...')
+    cos_sims_galleryGtEmbedds_to_galleryGtEmbedds = compute_all_similarities_between_embeddings(gallery_gt_embedds, gallery_gt_embedds)
+    print('    cos_sims_galleryGtEmbedds_to_galleryGtEmbedds.shape:', cos_sims_galleryGtEmbedds_to_galleryGtEmbedds.shape)
+    mins_cos_sims_galleryGtEmbedds_to_galleryGtEmbedds, maxs_cos_sims_galleryGtEmbedds_to_galleryGtEmbedds = get_mins_maxs_array(cos_sims_galleryGtEmbedds_to_galleryGtEmbedds, axis=1)
+
+    print(f'\nComputing cosine similarities between \'validation_gt_embedds\' and \'validation_gt_embedds\'...')
+    cos_sims_validationGtEmbedds_to_validationGtEmbedds = compute_all_similarities_between_embeddings(validation_gt_embedds, validation_gt_embedds)
+    print('    cos_sims_validationGtEmbedds_to_validationGtEmbedds.shape:', cos_sims_validationGtEmbedds_to_validationGtEmbedds.shape)
+    mins_cos_sims_validationGtEmbedds_to_validationGtEmbedds, maxs_cos_sims_validationGtEmbedds_to_validationGtEmbedds = get_mins_maxs_array(cos_sims_validationGtEmbedds_to_validationGtEmbedds, axis=1)
+
+    print(f'\nComputing cosine similarities between \'validation_gt_embedds\' and \'gallery_gt_embedds\'...')
+    cos_sims_validationGtEmbedds_to_galleryGtEmbedds = compute_all_similarities_between_embeddings(validation_gt_embedds, gallery_gt_embedds)
+    print('    cos_sims_validationGtEmbedds_to_galleryGtEmbedds.shape:', cos_sims_validationGtEmbedds_to_galleryGtEmbedds.shape)
+    mins_cos_sims_validationGtEmbedds_to_galleryGtEmbedds, maxs_cos_sims_validationGtEmbedds_to_galleryGtEmbedds = get_mins_maxs_array(cos_sims_validationGtEmbedds_to_galleryGtEmbedds, axis=1)
+
+    print(f'\nComputing cosine similarities between \'validation_pred_embedds\' and \'gallery_gt_embedds\'...')
+    cos_sims_validationPredEmbedd_to_galleryGtEmbedds = compute_all_similarities_between_embeddings(validation_pred_embedds, gallery_gt_embedds)
+    print('    cos_sims_validationPredEmbedd_to_galleryGtEmbedds.shape:', cos_sims_validationPredEmbedd_to_galleryGtEmbedds.shape)
+    mins_cos_sims_validationPredEmbedd_to_galleryGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_galleryGtEmbedds = get_mins_maxs_array(cos_sims_validationPredEmbedd_to_galleryGtEmbedds, axis=1)
+
+    print(f'\nComputing cosine similarities between \'validation_pred_embedds\' and \'validation_gt_embedds\'...')
+    cos_sims_validationPredEmbedd_to_validationGtEmbedds = compute_all_similarities_between_embeddings(validation_pred_embedds, validation_gt_embedds)
+    print('    cos_sims_validationPredEmbedd_to_validationGtEmbedds.shape:', cos_sims_validationPredEmbedd_to_validationGtEmbedds.shape)
+    mins_cos_sims_validationPredEmbedd_to_validationGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_validationGtEmbedds = get_mins_maxs_array(cos_sims_validationPredEmbedd_to_validationGtEmbedds, axis=1)
+
+
+    hist_file_name = 'histogram_min_max_cosine_similarities_galleryGt_galleryGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'\nSaving chart \'{hist_file_path}\'')
+    save_histograms(data=[mins_cos_sims_galleryGtEmbedds_to_galleryGtEmbedds, maxs_cos_sims_galleryGtEmbedds_to_galleryGtEmbedds],
+                    legend=['mins_galleryGtEmbedds_to_galleryGtEmbedds', 'maxs_galleryGtEmbedds_to_galleryGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['g', 'b'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+
+    hist_file_name = 'histogram_min_max_cosine_similarities_validationGt_to_validationGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[mins_cos_sims_validationGtEmbedds_to_validationGtEmbedds, maxs_cos_sims_validationGtEmbedds_to_validationGtEmbedds],
+                    legend=['mins_validationGtEmbedds_to_validationGtEmbedds', 'maxs_validationGtEmbedds_to_validationGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['g', 'b'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+    
+    hist_file_name = 'histogram_min_max_cosine_similarities_validationGt_to_galleryGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[mins_cos_sims_validationGtEmbedds_to_galleryGtEmbedds, maxs_cos_sims_validationGtEmbedds_to_galleryGtEmbedds],
+                    legend=['mins_validationGtEmbedds_to_galleryGtEmbedds', 'maxs_validationGtEmbedds_to_galleryGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['g', 'b'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+
+    hist_file_name = 'histogram_min_max_cosine_similarities_validationPred_to_galleryGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[mins_cos_sims_validationPredEmbedd_to_galleryGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_galleryGtEmbedds],
+                    legend=['mins_validationPredEmbedd_to_galleryGtEmbedds', 'maxs_validationPredEmbedd_to_galleryGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['g', 'b'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+
+    hist_file_name = 'histogram_min_max_cosine_similarities_validationPred_to_validationGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[mins_cos_sims_validationPredEmbedd_to_validationGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_validationGtEmbedds],
+                    legend=['mins_validationPredEmbedd_to_validationGtEmbedds', 'maxs_validationPredEmbedd_to_validationGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['g', 'b'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+
+    print('\nFinished!\n')
 
 
 if __name__ == '__main__':
