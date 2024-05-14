@@ -26,6 +26,7 @@ def getArgs():
     parser.add_argument('--detections', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/protocols/gallery.csv', help='')
     parser.add_argument('--output_dir', type=str, default='', help='the dir where to save results')
     parser.add_argument('--save_crops', action='store_true')
+    parser.add_argument('--rotate90', action='store_true')
 
     args = parser.parse_args()
     return args
@@ -83,8 +84,11 @@ def prepare_landmarks(lmks):
     return lmks_
 
 
-def prepare_face(face_img, lmks):
+def prepare_face(face_img, lmks, rotate90=False):
     aimg = face_align.norm_crop(face_img, landmark=lmks)
+    if rotate90:
+        aimg = cv2.rotate(aimg, cv2.ROTATE_90_CLOCKWISE)
+
     input_mean, input_std = 127.5, 127.5
     blob = cv2.dnn.blobFromImages([aimg], 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True)
     blob = torch.from_numpy(blob).cuda()
@@ -105,7 +109,7 @@ def compute_gallery_ground_truth_face_embeddings(arcface, detections, img_dir, g
                   [detection['LMOUTH_X'], detection['LMOUTH_Y']]]
         
         points_ = prepare_landmarks(points)
-        aimg, blob = prepare_face(img, points_)
+        aimg, blob = prepare_face(img, points_, args.rotate90)
 
         subj_dir_path = os.path.join(gallery_output_path, detection['SUBJECT_ID'])
         os.makedirs(subj_dir_path, exist_ok=True)
@@ -141,7 +145,7 @@ def compute_validation_detections_truth_face_embeddings(arcface, detections, img
                   [detection['LMOUTH_X'], detection['LMOUTH_Y']]]
         
         points_ = prepare_landmarks(points)
-        aimg, blob = prepare_face(img, points_)
+        aimg, blob = prepare_face(img, points_, args.rotate90)
 
         subj_dir_path = os.path.join(output_path, detection['FILE'].split('.')[0])
         os.makedirs(subj_dir_path, exist_ok=True)
@@ -183,6 +187,7 @@ def main(args):
     output_path = os.path.join(os.path.dirname(img_dir), output_dir)
     # embedd_output_path = os.path.join(output_path, output_path, os.path.basename(img_dir))
     embedd_output_path = os.path.join(output_path, output_path, detect_set)
+    if args.rotate90: embedd_output_path += '_rotate90'
     print(f'Making output dir \'{embedd_output_path}\'')
     os.makedirs(embedd_output_path, exist_ok=True)
 

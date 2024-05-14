@@ -28,6 +28,9 @@ def getArgs():
     parser.add_argument('--embedd_ext', type=str, default='.npy', help='')
 
     parser.add_argument('--output_dir', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/analysis_dataset', help='the dir where to save results')
+
+    parser.add_argument('--validation_embedd_detect_pred_rot90', type=str, default='', help='')    # /datasets2/3rd_OpensetFDIC_IJCB2024/2D_embeddings/validation_images_DETECTED_FACES_RETINAFACE_scales=[0.15,0.2,0.5,1.0,1.2,1.5]_all_detections_thresh=0.01_rotate90
+
     # parser.add_argument('--scale-to-save', type=float, default=1.0, help='')
     # parser.add_argument('--start-string', type=str, default='', help='')
     # parser.add_argument('--save-images', action='store_true')
@@ -249,6 +252,32 @@ def compute_all_similarities_between_embeddings(embeddings1, embeddings2):
     return cosine_similarities
 
 
+def compute_pairwise_similarities_between_embeddings(embeddings1, embeddings2):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if isinstance(embeddings1, np.ndarray):
+         embeddings1 = torch.from_numpy(embeddings1)
+    if isinstance(embeddings2, np.ndarray):
+         embeddings2 = torch.from_numpy(embeddings2)
+
+    embeddings1 = embeddings1.to(device)
+    embeddings2 = embeddings2.to(device)
+    
+    embeddings1_normalized = F.normalize(embeddings1, p=2, dim=1)
+    embeddings2_normalized = F.normalize(embeddings2, p=2, dim=1)
+    
+    print(f'    Allocating vector {len(embeddings1)}...')
+    dot_product = torch.zeros(len(embeddings1),)
+    for idx1 in range(len(embeddings1)):
+        print(f'    Computing cosine similarities {idx1}/{len(embeddings1)}', end='\r')
+        # print(f'    \nembeddings1_normalized[idx1].size():', embeddings1_normalized[idx1].size())
+        dot_product[idx1] = torch.mm(torch.unsqueeze(embeddings1_normalized[idx1],0), torch.unsqueeze(embeddings2_normalized[idx1],0).t())
+    print('')
+
+    cosine_similarities = dot_product.cpu().detach().numpy()
+    return cosine_similarities
+
+
 def get_mins_maxs_array(array, axis=1):
     mins = array.min(axis=axis)
     maxs = array.max(axis=axis)
@@ -391,6 +420,36 @@ def main(args):
     print('    cos_sims_validationPredEmbedds_to_validationGtMeanEmbedd.shape:', cos_sims_validationPredEmbedds_to_validationGtMeanEmbedd.shape)
     # sys.exit(0)
 
+    if args.validation_embedd_detect_pred_rot90 != '':
+        print(f'\nLoading validation embeddings (ROTATE 90) detections with labels \'{args.validation_embedd_detect_pred_rot90}\'')
+        validation_pred_embedds_rot90, validation_pred_embedds_labels_rot90 = load_2D_embeddings_with_labels(args.validation_embedd_detect_pred_rot90, args.embedd_ext, detections=validation_pred_detections)
+        print('    validation_pred_embedds_rot90.shape:', validation_pred_embedds_rot90.shape)
+        # sys.exit(0)
+
+        print(f'\nComputing cosine similarities between \'validation_pred_embedds\' and \'gallery_gt_embedds\'...')
+        cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90 = compute_pairwise_similarities_between_embeddings(validation_pred_embedds, validation_pred_embedds_rot90)
+        print('    cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90.shape:', cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90.shape)
+        TP_cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90 = cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90[validation_pred_embedds_labels==1]
+        FP_cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90 = cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90[validation_pred_embedds_labels==0]
+        # FP_cos_sims_validationPredEmbedd_to_galleryGtEmbedds = cos_sims_validationPredEmbedd_to_galleryGtEmbedds[validation_pred_embedds_labels==0]
+        # mins_cos_sims_validationPredEmbedd_to_galleryGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_galleryGtEmbedds = get_mins_maxs_array(cos_sims_validationPredEmbedd_to_galleryGtEmbedds, axis=1)
+
+        print('-----------')
+
+        hist_file_name = 'histogram_TP_FP_cosine_similarities_validationPred_to_validationPredRotate90.png'
+        hist_file_path = os.path.join(output_dir, hist_file_name)
+        print(f'Saving chart \'{hist_file_path}\'')
+        save_histograms(data=[FP_cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90.flatten(), TP_cos_sims_validationPredEmbedd_to_validationPredEmbedd_rot90.flatten()],
+                        legend=['FP_validationPredEmbedd_to_validationPredEmbeddRotate90', 'TP_validationPredEmbedd_to_validationPredEmbeddRotate90'],
+                        title='Histograms - Cosine similarities',
+                        xlim=(-1.1, 1.1),
+                        # ylim=(0, 30000),
+                        bar_colors = ['r', 'g'],
+                        bar_transparencies = (0.5, 0.5),
+                        bins=(25, 25),
+                        save_path=hist_file_path)
+        # sys.exit(0)
+
 
     hist_file_name = 'histogram_gallery_validation_cosine_similarities.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
@@ -404,7 +463,6 @@ def main(args):
                     bar_transparencies = (0.5, 0.5, 0.5),
                     bins=(50, 50, 50),
                     save_path=hist_file_path)
-
 
     hist_file_name = 'histogram_validation_validationGT_cosine_similarities.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
