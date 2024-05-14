@@ -8,6 +8,7 @@ import ast
 import cv2
 import csv
 import copy
+import glob
 import matplotlib.pyplot as plt
 
 import torch
@@ -116,6 +117,50 @@ def load_2D_embeddings(path, file_ext, normalize=True):
         embedds_data[idx_embedd_path] = one_embedd
     print('')
     return embedds_data
+
+
+def load_2D_embeddings_with_labels(path, file_ext, detections=None, normalize=True):
+    print(f'    Searching files paths in \'{path}\'')
+    embedds_paths = [None] * len(detections)
+    # embedds_labels = [None] * len(detections)
+    embedds_labels = -np.ones((len(detections),), dtype=int)
+    for idx_det, det in enumerate(detections):
+        print(f'    {idx_det}/{len(detections)}', end='\r')
+        det_file = det['FILE']
+        det_file_name, det_file_ext = os.path.splitext(det_file)
+        detection_score = det['DETECTION_SCORE']
+        label = det['TYPE']
+
+        img_embedd_pattern = os.path.join(path, det_file_name, det_file_name+'_*_conf%.2f'%(detection_score)+'*'+file_ext)
+        img_embedd_pattern = img_embedd_pattern.replace(']','*')
+        # img_embedd_pattern = img_embedd_pattern.replace('.00','.0')
+        img_embedd_pattern = img_embedd_pattern.replace('0*','*')
+        # embedds_paths = get_all_files_in_path(path, file_extension=file_ext)
+        # print('img_embedd_pattern:', img_embedd_pattern)
+        embedd_path = glob.glob(img_embedd_pattern)
+        assert len(embedd_path) > 0, f'Error, no such file with pattern=\'{img_embedd_pattern}\''
+        embedd_path = embedd_path[0]
+        # print('embedd_path:', embedd_path)
+        embedds_paths[idx_det] = embedd_path
+        embedds_labels[idx_det] = 1 if label == 'tp' else 0
+        # sys.exit(0)
+    print('')
+    print(f'    Found {len(embedds_paths)} files')
+    # sys.exit(0)
+
+    # print(f'    Searching files paths in \'{path}\'')
+    # embedds_paths = get_all_files_in_path(path, file_extension=file_ext)
+    # print(f'    Found {len(embedds_paths)} files')
+    
+    embedds_data = np.zeros((len(embedds_paths),512), dtype=np.float32)
+    for idx_embedd_path, embedd_path in enumerate(embedds_paths):
+        print(f'    Loading embeddings {idx_embedd_path}/{len(embedds_paths)}', end='\r')
+        one_embedd = np.load(embedd_path)
+        if normalize:
+            one_embedd = one_embedd / np.linalg.norm(one_embedd)
+        embedds_data[idx_embedd_path] = one_embedd
+    print('')
+    return embedds_data, embedds_labels
 
 
 def compute_detections_statistics(detections):
@@ -282,31 +327,34 @@ def main(args):
     hist_file_name = 'histogram_validation_face_widths.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[validation_gt_detections_stats['face_widths'], validation_pred_detections_stats['face_widths']],
-                    legend=['validation gt face_widths', 'validation preds face_widths'],
+    save_histograms(data=[validation_pred_detections_stats['face_widths'], validation_gt_detections_stats['face_widths']],
+                    legend=['validation preds face_widths', 'validation gt face_widths'],
                     title='Histograms - validation images',
                     # xlim=(0, 700),
-                    bins=(20, 100),
+                    bar_colors = ['b', 'g'],
+                    bins=(100, 20),
                     save_path=hist_file_path)
     
     hist_file_name = 'histogram_validation_face_heights.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[validation_gt_detections_stats['face_heights'], validation_pred_detections_stats['face_heights']],
-                    legend=['validation gt face_heights', 'validation preds face_heights'],
+    save_histograms(data=[validation_pred_detections_stats['face_heights'], validation_gt_detections_stats['face_heights']],
+                    legend=['validation preds face_heights', 'validation gt face_heights'],
                     title='Histograms - validation images',
                     # xlim=(0, 700),
-                    bins=(20, 100),
+                    bar_colors = ['b', 'g'],
+                    bins=(100, 20),
                     save_path=hist_file_path)
     
     hist_file_name = 'histogram_validation_face_areas.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[validation_gt_detections_stats['face_areas'], validation_pred_detections_stats['face_areas']],
-                    legend=['validation gt face_areas', 'validation preds face_areas'],
+    save_histograms(data=[validation_pred_detections_stats['face_areas'], validation_gt_detections_stats['face_areas']],
+                    legend=['validation preds face_areas', 'validation gt face_areas'],
                     title='Histograms - validation images',
                     # xlim=(0, 700),
-                    bins=(20, 100),
+                    bar_colors = ['b', 'g'],
+                    bins=(100, 20),
                     save_path=hist_file_path)
 
     # sys.exit(0)
@@ -332,8 +380,8 @@ def main(args):
     print('    cos_sims_validationGtEmbedds_to_validationGtMeanEmbedd.shape:', cos_sims_validationGtEmbedds_to_validationGtMeanEmbedd.shape)
     # sys.exit(0)
 
-    print(f'\nLoading validation embeddings detections \'{args.validation_embedd_detect_pred}\'')
-    validation_pred_embedds = load_2D_embeddings(args.validation_embedd_detect_pred, args.embedd_ext)
+    print(f'\nLoading validation embeddings detections with labels \'{args.validation_embedd_detect_pred}\'')
+    validation_pred_embedds, validation_pred_embedds_labels = load_2D_embeddings_with_labels(args.validation_embedd_detect_pred, args.embedd_ext, detections=validation_pred_detections)
     print('    validation_pred_embedds.shape:', validation_pred_embedds.shape)
     validation_pred_mean_embedd = validation_pred_embedds.mean(axis=0)
     print('    validation_pred_mean_embedd.shape:', validation_pred_mean_embedd.shape)
@@ -392,17 +440,50 @@ def main(args):
     print(f'\nComputing cosine similarities between \'validation_pred_embedds\' and \'gallery_gt_embedds\'...')
     cos_sims_validationPredEmbedd_to_galleryGtEmbedds = compute_all_similarities_between_embeddings(validation_pred_embedds, gallery_gt_embedds)
     print('    cos_sims_validationPredEmbedd_to_galleryGtEmbedds.shape:', cos_sims_validationPredEmbedd_to_galleryGtEmbedds.shape)
+    TP_cos_sims_validationPredEmbedd_to_galleryGtEmbedds = cos_sims_validationPredEmbedd_to_galleryGtEmbedds[validation_pred_embedds_labels==1]
+    FP_cos_sims_validationPredEmbedd_to_galleryGtEmbedds = cos_sims_validationPredEmbedd_to_galleryGtEmbedds[validation_pred_embedds_labels==0]
     mins_cos_sims_validationPredEmbedd_to_galleryGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_galleryGtEmbedds = get_mins_maxs_array(cos_sims_validationPredEmbedd_to_galleryGtEmbedds, axis=1)
 
     print(f'\nComputing cosine similarities between \'validation_pred_embedds\' and \'validation_gt_embedds\'...')
     cos_sims_validationPredEmbedd_to_validationGtEmbedds = compute_all_similarities_between_embeddings(validation_pred_embedds, validation_gt_embedds)
     print('    cos_sims_validationPredEmbedd_to_validationGtEmbedds.shape:', cos_sims_validationPredEmbedd_to_validationGtEmbedds.shape)
+    TP_cos_sims_validationPredEmbedd_to_validationGtEmbedds = cos_sims_validationPredEmbedd_to_validationGtEmbedds[validation_pred_embedds_labels==1]
+    FP_cos_sims_validationPredEmbedd_to_validationGtEmbedds = cos_sims_validationPredEmbedd_to_validationGtEmbedds[validation_pred_embedds_labels==0]
     mins_cos_sims_validationPredEmbedd_to_validationGtEmbedds, maxs_cos_sims_validationPredEmbedd_to_validationGtEmbedds = get_mins_maxs_array(cos_sims_validationPredEmbedd_to_validationGtEmbedds, axis=1)
 
+    print('----------------')    
 
+    hist_file_name = 'histogram_TP_FP_cosine_similarities_validationPred_to_galleryGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[FP_cos_sims_validationPredEmbedd_to_galleryGtEmbedds.flatten(), TP_cos_sims_validationPredEmbedd_to_galleryGtEmbedds.flatten()],
+                    legend=['FP_validationPredEmbedd_to_galleryGtEmbedds', 'TP_validationPredEmbedd_to_galleryGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['r', 'g'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+    
+    hist_file_name = 'histogram_TP_FP_cosine_similarities_validationPred_to_validationGt.png'
+    hist_file_path = os.path.join(output_dir, hist_file_name)
+    print(f'Saving chart \'{hist_file_path}\'')
+    save_histograms(data=[FP_cos_sims_validationPredEmbedd_to_validationGtEmbedds.flatten(), TP_cos_sims_validationPredEmbedd_to_validationGtEmbedds.flatten()],
+                    legend=['FP_validationPredEmbedd_to_validationGtEmbedds', 'TP_validationPredEmbedd_to_validationGtEmbedds'],
+                    title='Histograms - Cosine similarities',
+                    xlim=(-1.1, 1.1),
+                    # ylim=(0, 30000),
+                    bar_colors = ['r', 'g'],
+                    bar_transparencies = (0.5, 0.5),
+                    bins=(25, 25),
+                    save_path=hist_file_path)
+
+    print('----------------')
+    
     hist_file_name = 'histogram_min_max_cosine_similarities_galleryGt_galleryGt.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
-    print(f'\nSaving chart \'{hist_file_path}\'')
+    print(f'Saving chart \'{hist_file_path}\'')
     save_histograms(data=[mins_cos_sims_galleryGtEmbedds_to_galleryGtEmbedds, maxs_cos_sims_galleryGtEmbedds_to_galleryGtEmbedds],
                     legend=['mins_galleryGtEmbedds_to_galleryGtEmbedds', 'maxs_galleryGtEmbedds_to_galleryGtEmbedds'],
                     title='Histograms - Cosine similarities',
@@ -464,6 +545,7 @@ def main(args):
                     bar_transparencies = (0.5, 0.5),
                     bins=(25, 25),
                     save_path=hist_file_path)
+
 
     print('\nFinished!\n')
 
