@@ -30,9 +30,11 @@ def getArgs():
     parser.add_argument('--gpu', default=-1, type=int, help='gpu id， when the id == -1, use cpu')
     parser.add_argument('--face_size', type=int, default=112, help='the size of the face to save, the size x%2==0, and width equal height')
     parser.add_argument('--thresh', type=float, default=0.01, help='threshold for face detection')
+    parser.add_argument('--nms', type=float, default=0.4, help='Non-Maximum Suppression')
     parser.add_argument('--scales', type=str, default='[1.0]', help='the scale to resize image before detecting face')
+    parser.add_argument('--draw_bbox_lmk_save_whole_img', action='store_true', help='')
+    parser.add_argument('--save_crops', action='store_true', help='')
     parser.add_argument('--align_face', action='store_true', help='')
-    parser.add_argument('--draw_bbox_lmk', action='store_true', help='')
     parser.add_argument('--force_lmk', action='store_true', help='')
 
     parser.add_argument('--str_begin', default='', type=str, help='Substring to find and start processing')
@@ -196,6 +198,7 @@ def crop_align_face(args):
     if output_dir == '':
         output_dir = input_dir + '_DETECTED_FACES_RETINAFACE'
     output_dir += f"_scales={str(args.scales).replace(' ','')}"
+    output_dir += f"_nms={args.nms}"
     os.makedirs(output_dir, exist_ok=True)
 
     output_imgs = os.path.join(output_dir.rstrip('/'), 'imgs')
@@ -216,7 +219,7 @@ def crop_align_face(args):
 
     det_path = './retinaface/model/retinaface-R50/R50'
     print(f'\nLoading face detector \'{det_path}\'...')
-    detector = RetinaFace(det_path, 0, args.gpu, 'net3')
+    detector = RetinaFace(det_path, 0, args.gpu, 'net3', nms=args.nms)
 
     count_no_find_face = 0
     count_crop_images = 0
@@ -311,7 +314,7 @@ def crop_align_face(args):
             output_path_path = os.path.join(os.path.dirname(output_path_path), face_name)
             os.makedirs(os.path.dirname(output_path_path), exist_ok=True)
 
-            if args.draw_bbox_lmk:
+            if args.draw_bbox_lmk_save_whole_img:
                 face_img_copy = draw_bbox(face_img_copy, bbox_)
                 face_img_copy = draw_lmks(face_img_copy, points_)
                 face_name = '%s_all_bboxes.jpg'%(input_path_path.split('/')[-1].split('.')[0])
@@ -320,8 +323,9 @@ def crop_align_face(args):
                     print(f'Saving {file_path_bbox_save}')
                     cv2.imwrite(file_path_bbox_save, face_img_copy)
 
-            print(f'Saving {output_path_path} ...')
-            cv2.imwrite(output_path_path, face)
+            if args.save_crops:
+                print(f'Saving {output_path_path} ...')
+                cv2.imwrite(output_path_path, face)
 
 
         # SAVE DETECTIONS AS TXT FILE
