@@ -330,7 +330,9 @@ def crop_align_face(args):
 
         # SAVE DETECTIONS AS TXT FILE
         output_txt_name = input_path_path.split('/')[-1].replace(args.input_ext, '.txt')
-        output_txt_path = os.path.join(output_txt, output_txt_name)
+        output_dir_txt = os.path.join(output_txt, input_path_path.split('/')[-2])
+        os.makedirs(output_dir_txt, exist_ok=True)
+        output_txt_path = os.path.join(output_dir_txt, output_txt_name)
         img_file_name = input_path_path.split('/')[-1]
         detections = {img_file_name: [(confidences, bbox, points)]}
         print(f'Saving {output_txt_path} ...')
