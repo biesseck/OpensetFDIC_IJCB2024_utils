@@ -31,12 +31,46 @@ def getArgs():
 
     parser.add_argument('--validation_embedd_detect_pred_rot90', type=str, default='', help='')    # /datasets2/3rd_OpensetFDIC_IJCB2024/2D_embeddings/validation_images_DETECTED_FACES_RETINAFACE_scales=[0.15,0.2,0.5,1.0,1.2,1.5]_all_detections_thresh=0.01_rotate90
 
+    parser.add_argument('--imgs_with_annotation_errors', type=str, default='', help='')    # /datasets2/3rd_OpensetFDIC_IJCB2024/validation_images_DETECTED_FACES_RETINAFACE_scales=[0.15,0.2,0.5,1.0]/images_with_bbox_annotation_errors.txt
+
     # parser.add_argument('--scale-to-save', type=float, default=1.0, help='')
     # parser.add_argument('--start-string', type=str, default='', help='')
     # parser.add_argument('--save-images', action='store_true')
 
     args = parser.parse_args()
     return args
+
+
+def read_imgs_annot_errors(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            # Strip the newline characters from each line
+            lines = [line.strip() for line in lines]
+        return lines
+    except FileNotFoundError:
+        print(f"The file {file_path} was not found.")
+        return []
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
+
+def remove_detections_from_images_names(detections, images_names):
+    num_removed_detections = 0
+    for idx_img_name, img_name in enumerate(images_names):
+        idxes_to_remove = []
+        for idx_det, detection in enumerate(detections):
+            if detection['FILE'] == img_name:
+                idxes_to_remove.append(idx_det)
+        
+        num_removed_detections += len(idxes_to_remove)
+        idxes_to_remove = sorted(idxes_to_remove, reverse=True)
+        for index in idxes_to_remove:
+            if 0 <= index < len(detections):
+                detections.pop(index)
+    
+    return detections, num_removed_detections
 
 
 def get_all_files_in_path(folder_path, file_extension='.jpg', pattern=''):
@@ -164,6 +198,25 @@ def load_2D_embeddings_with_labels(path, file_ext, detections=None, normalize=Tr
         embedds_data[idx_embedd_path] = one_embedd
     print('')
     return embedds_data, embedds_labels
+
+
+def get_pred_detections_labels(detections):
+    detections_labels = -np.ones((len(detections),), dtype=int)
+    for idx_det, det in enumerate(detections):
+        label = det['TYPE']
+        detections_labels[idx_det] = 1 if label == 'tp' else 0
+    return detections_labels
+
+
+def split_detections_by_labels(detections, labels):
+    TP_detections, FP_detections = [], []
+    for idx_det, (det, label) in enumerate(zip(detections, labels)):
+        if label == 1:
+            TP_detections.append(det)
+        else:
+            FP_detections.append(det)
+    assert len(TP_detections)+len(FP_detections) == len(detections)
+    return TP_detections, FP_detections
 
 
 def compute_detections_statistics(detections):
@@ -348,42 +401,71 @@ def main(args):
     print(f'    Loaded {len(validation_pred_detections)} detections\n')
     # sys.exit(0)
 
+    if args.imgs_with_annotation_errors != '':
+        print(f'Loading images names with annotation errors: \'{args.imgs_with_annotation_errors}\'')
+        imgs_annot_errors = read_imgs_annot_errors(args.imgs_with_annotation_errors)
+        print(f'    Loaded {len(imgs_annot_errors)} images names\n')
+
+        print(f'Removing detections with annotation errors from validation_gt_detections ({len(imgs_annot_errors)} images)')
+        validation_gt_detections, num_removed_detections = remove_detections_from_images_names(validation_gt_detections, imgs_annot_errors)
+        print(f'    Removed {num_removed_detections} detections\n')
+
+        print(f'Removing detections with annotation errors from validation_pred_detections ({len(imgs_annot_errors)} images)')
+        validation_pred_detections, num_removed_detections = remove_detections_from_images_names(validation_pred_detections, imgs_annot_errors)
+        print(f'    Removed {num_removed_detections} detections\n')
+    # sys.exit(0)
+
+    print(f'Getting validation_pred_labels')
+    validation_pred_labels = get_pred_detections_labels(validation_pred_detections)
+    print(f'    validation_pred_labels.shape {validation_pred_labels.shape}\n')
+    # sys.exit(0)
+
+    TP_validation_pred_detections, FP_validation_pred_detections = split_detections_by_labels(validation_pred_detections, validation_pred_labels)
+
+    ################################
+
     print(f'Computing validation groundtruth detections statistics...')
     validation_gt_detections_stats = compute_detections_statistics(validation_gt_detections)
-    print(f'Computing validation predictions detections statistics...')
-    validation_pred_detections_stats = compute_detections_statistics(validation_pred_detections)
+    # print(f'Computing validation predictions detections statistics...')
+    # validation_pred_detections_stats = compute_detections_statistics(validation_pred_detections)
+    print(f'Computing TP validation predictions detections statistics...')
+    TP_validation_pred_detections_stats = compute_detections_statistics(TP_validation_pred_detections)
+    FP_validation_pred_detections_stats = compute_detections_statistics(FP_validation_pred_detections)
 
     hist_file_name = 'histogram_validation_face_widths.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[validation_pred_detections_stats['face_widths'], validation_gt_detections_stats['face_widths']],
-                    legend=['validation preds face_widths', 'validation gt face_widths'],
+    save_histograms(data=[TP_validation_pred_detections_stats['face_widths'], FP_validation_pred_detections_stats['face_widths'], validation_gt_detections_stats['face_widths']],
+                    legend=['TP validation preds face_widths', 'FP validation preds face_widths', 'validation gt face_widths'],
                     title='Histograms - validation images',
                     # xlim=(0, 700),
-                    bar_colors = ['b', 'g'],
-                    bins=(100, 20),
+                    bar_colors = ['b', 'r', 'g'],
+                    bar_transparencies = [0.5, 0.5, 0.5],
+                    bins=(50, 50, 20),
                     save_path=hist_file_path)
-    
+
     hist_file_name = 'histogram_validation_face_heights.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[validation_pred_detections_stats['face_heights'], validation_gt_detections_stats['face_heights']],
-                    legend=['validation preds face_heights', 'validation gt face_heights'],
+    save_histograms(data=[TP_validation_pred_detections_stats['face_heights'], FP_validation_pred_detections_stats['face_heights'], validation_gt_detections_stats['face_heights']],
+                    legend=['TP validation preds face_heights', 'FP validation preds face_heights', 'validation gt face_heights'],
                     title='Histograms - validation images',
                     # xlim=(0, 700),
-                    bar_colors = ['b', 'g'],
-                    bins=(100, 20),
+                    bar_colors = ['b', 'r', 'g'],
+                    bar_transparencies = [0.5, 0.5, 0.5],
+                    bins=(50, 50, 20),
                     save_path=hist_file_path)
     
     hist_file_name = 'histogram_validation_face_areas.png'
     hist_file_path = os.path.join(output_dir, hist_file_name)
     print(f'Saving chart \'{hist_file_path}\'')
-    save_histograms(data=[validation_pred_detections_stats['face_areas'], validation_gt_detections_stats['face_areas']],
-                    legend=['validation preds face_areas', 'validation gt face_areas'],
+    save_histograms(data=[TP_validation_pred_detections_stats['face_areas'], FP_validation_pred_detections_stats['face_areas'], validation_gt_detections_stats['face_areas']],
+                    legend=['TP validation preds face_areas', 'FP validation preds face_areas', 'validation gt face_areas'],
                     title='Histograms - validation images',
                     # xlim=(0, 700),
-                    bar_colors = ['b', 'g'],
-                    bins=(100, 20),
+                    bar_colors = ['b', 'r', 'g'],
+                    bar_transparencies = [0.5, 0.5, 0.5],
+                    bins=(50, 50, 20),
                     save_path=hist_file_path)
 
     # sys.exit(0)

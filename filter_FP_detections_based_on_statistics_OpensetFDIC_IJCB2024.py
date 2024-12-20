@@ -26,6 +26,8 @@ def getArgs():
     parser.add_argument('--validation_embedd_detect_pred', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/2D_embeddings/validation_images_DETECTED_FACES_RETINAFACE_scales=[0.15,0.2,0.5,1.0,1.2,1.5]_all_detections_thresh=0.01', help='')
     parser.add_argument('--embedd_ext', type=str, default='.npy', help='')
 
+    parser.add_argument('--imgs_with_annotation_errors', type=str, default='', help='')    # /datasets2/3rd_OpensetFDIC_IJCB2024/validation_images_DETECTED_FACES_RETINAFACE_scales=[0.15,0.2,0.5,1.0]/images_with_bbox_annotation_errors.txt
+
     # parser.add_argument('--output_dir', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/analysis_dataset', help='the dir where to save results')
     # parser.add_argument('--scale-to-save', type=float, default=1.0, help='')
     # parser.add_argument('--start-string', type=str, default='', help='')
@@ -33,6 +35,38 @@ def getArgs():
 
     args = parser.parse_args()
     return args
+
+
+def read_imgs_annot_errors(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            # Strip the newline characters from each line
+            lines = [line.strip() for line in lines]
+        return lines
+    except FileNotFoundError:
+        print(f"The file {file_path} was not found.")
+        return []
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
+
+def remove_detections_from_images_names(detections, images_names):
+    num_removed_detections = 0
+    for idx_img_name, img_name in enumerate(images_names):
+        idxes_to_remove = []
+        for idx_det, detection in enumerate(detections):
+            if detection['FILE'] == img_name:
+                idxes_to_remove.append(idx_det)
+        
+        num_removed_detections += len(idxes_to_remove)
+        idxes_to_remove = sorted(idxes_to_remove, reverse=True)
+        for index in idxes_to_remove:
+            if 0 <= index < len(detections):
+                detections.pop(index)
+    
+    return detections, num_removed_detections
 
 
 def get_all_files_in_path(folder_path, file_extension='.jpg', pattern=''):
@@ -301,6 +335,20 @@ def main(args):
     _, validation_pred_detections = load_detections(args.validation_detect_pred)
     # print('validation_pred_detections:', validation_pred_detections[0])
     print(f'    Loaded {len(validation_pred_detections)} detections\n')
+    # sys.exit(0)
+
+    if args.imgs_with_annotation_errors != '':
+        print(f'Loading images names with annotation errors: \'{args.imgs_with_annotation_errors}\'')
+        imgs_annot_errors = read_imgs_annot_errors(args.imgs_with_annotation_errors)
+        print(f'    Loaded {len(imgs_annot_errors)} images names\n')
+
+        print(f'Removing detections with annotation errors from validation_gt_detections ({len(imgs_annot_errors)} images)')
+        validation_gt_detections, num_removed_detections = remove_detections_from_images_names(validation_gt_detections, imgs_annot_errors)
+        print(f'    Removed {num_removed_detections} detections\n')
+
+        print(f'Removing detections with annotation errors from validation_pred_detections ({len(imgs_annot_errors)} images)')
+        validation_pred_detections, num_removed_detections = remove_detections_from_images_names(validation_pred_detections, imgs_annot_errors)
+        print(f'    Removed {num_removed_detections} detections\n')
     # sys.exit(0)
 
     print(f'Computing validation groundtruth detections statistics...')
