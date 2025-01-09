@@ -25,7 +25,7 @@ def getArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_list', type=str, default='', help='')
     parser.add_argument('--input_path', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/validation_images', help='the dir your dataset of face which need to crop')
-    parser.add_argument('--input_ext', type=str, default='.jpg', help='')
+    parser.add_argument('--input_ext', type=str, default='jpg,png,jpeg', help='jpg or png or jpeg or jpg,png or jpg,png,jpeg')
     parser.add_argument('--output_path', type=str, default='', help='the dir the cropped faces of your dataset where to save')
     parser.add_argument('--gpu', default=-1, type=int, help='gpu id， when the id == -1, use cpu')
     parser.add_argument('--face_size', type=int, default=112, help='the size of the face to save, the size x%2==0, and width equal height')
@@ -86,13 +86,14 @@ def draw_lmks(img, lmks):
     return result_img
 
 
-def get_all_files_in_path(folder_path, file_extension='.jpg', pattern=''):
+def get_all_files_in_path(folder_path, file_extension=['.jpg','.png'], pattern=''):
     file_list = []
     for root, _, files in os.walk(folder_path):
         for filename in files:
             path_file = os.path.join(root, filename)
-            if pattern in path_file and path_file.endswith(file_extension):
-                file_list.append(path_file)
+            for ext in file_extension:
+                if pattern in path_file and path_file.lower().endswith(ext.lower()):
+                    file_list.append(path_file)
     file_list.sort()
     return file_list
 
@@ -224,17 +225,18 @@ def crop_align_face(args):
     count_no_find_face = 0
     count_crop_images = 0
 
-    ext = args.input_ext
+    ext = args.input_ext.split(',')
     all_img_paths = []
     if args.file_list != '' and os.path.isfile(args.file_list):
         print(f'\nLoading paths with pattern \'{args.str_pattern}\' from file \'{args.file_list}\' ...')
         all_img_paths = get_all_paths_from_file(args.file_list, args.str_pattern)
     elif os.path.isdir(input_dir):
-        print(f'\nSearching \'{ext}\' files with pattern \'{args.str_pattern}\' in path \'{input_dir}\' ...')
+        print(f'\nSearching files {ext} with pattern \'{args.str_pattern}\' in path \'{input_dir}\' ...')
         all_img_paths = get_all_files_in_path(input_dir, ext, args.str_pattern)    
 
     assert len(all_img_paths) > 0, f'No files found with extention \'{ext}\' and pattern \'{args.str_pattern}\' in input \'{input_dir}\''
     print(f'{len(all_img_paths)} files found')
+
     begin_parts, end_parts = get_parts_indices(all_img_paths, args.div)
     img_paths_part = all_img_paths[begin_parts[args.part]:end_parts[args.part]]
 
