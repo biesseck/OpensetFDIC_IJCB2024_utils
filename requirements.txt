@@ -50,3 +50,5 @@ urllib3==2.0.5
 wcwidth==0.2.8
 zipp==3.17.0
 pandas==2.2.1
+rawpy==0.21.0
+
