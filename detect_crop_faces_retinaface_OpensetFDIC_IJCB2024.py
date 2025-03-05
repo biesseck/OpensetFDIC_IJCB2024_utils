@@ -1,11 +1,11 @@
 # Dataset BUPT-BalancedFace
-# python align_crop_faces_retinaface.py --input_path /datasets2/frcsyn_wacv2024/datasets/real/3_BUPT-BalancedFace/race_per_7000 --output_path /datasets2/frcsyn_wacv2024/datasets/real/3_BUPT-BalancedFace/race_per_7000_112x112 --thresh 0.8 --scales [0.5]
+# python detect_crop_faces_retinaface_OpensetFDIC_IJCB2024.py --input_path /datasets2/frcsyn_wacv2024/datasets/real/3_BUPT-BalancedFace/race_per_7000 --output_path /datasets2/frcsyn_wacv2024/datasets/real/3_BUPT-BalancedFace/race_per_7000_112x112 --thresh 0.8 --scales [0.5]
 
 # Dataset FFHQ
-# python align_crop_faces_retinaface.py --input_path /datasets2/frcsyn_wacv2024/datasets/real/2_FFHQ/images1024x1024 --output_path /datasets2/frcsyn_wacv2024/datasets/real/2_FFHQ/images_crops_112x112 --thresh 0.8 --scales [0.5]
+# python detect_crop_faces_retinaface_OpensetFDIC_IJCB2024.py --input_path /datasets2/frcsyn_wacv2024/datasets/real/2_FFHQ/images1024x1024 --output_path /datasets2/frcsyn_wacv2024/datasets/real/2_FFHQ/images_crops_112x112 --thresh 0.8 --scales [0.5]
 
 # Dataset AgeDB
-# python align_crop_faces_retinaface.py --input_path /datasets2/frcsyn_wacv2024/datasets/real/4_AgeDB/03_Protocol_Images --output_path /datasets2/frcsyn_wacv2024/datasets/real/4_AgeDB/03_Protocol_Images_crops_112x112 --thresh 0.5 --scales [1.0]
+# python detect_crop_faces_retinaface_OpensetFDIC_IJCB2024.py --input_path /datasets2/frcsyn_wacv2024/datasets/real/4_AgeDB/03_Protocol_Images --output_path /datasets2/frcsyn_wacv2024/datasets/real/4_AgeDB/03_Protocol_Images_crops_112x112 --thresh 0.5 --scales [1.0]
 
 import os
 import sys
@@ -19,13 +19,14 @@ import ast
 import cv2
 from retinaface.retinaface import RetinaFace
 from insightface.utils import face_align
+import rawpy
 
 
 def getArgs():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_list', type=str, default='', help='')
     parser.add_argument('--input_path', type=str, default='/datasets2/3rd_OpensetFDIC_IJCB2024/validation_images', help='the dir your dataset of face which need to crop')
-    parser.add_argument('--input_ext', type=str, default='jpg,png,jpeg', help='jpg or png or jpeg or jpg,png or jpg,png,jpeg')
+    parser.add_argument('--input_ext', type=str, default='jpg,png,jpeg,nef', help='jpg or png or jpeg or nef or jpg,png or jpg,png,jpeg')
     parser.add_argument('--output_path', type=str, default='', help='the dir the cropped faces of your dataset where to save')
     parser.add_argument('--gpu', default=-1, type=int, help='gpu id， when the id == -1, use cpu')
     parser.add_argument('--face_size', type=int, default=112, help='the size of the face to save, the size x%2==0, and width equal height')
@@ -272,7 +273,13 @@ def crop_align_face(args):
         print(f'  end_parts: {end_parts}')
 
         print(f'Img {i+1}/{len(img_paths_part)} - Reading {input_path_path} ...')
-        face_img = cv2.imread(input_path_path)
+        # face_img = cv2.imread(input_path_path)
+        if input_path_path.endswith('.nef'):
+            raw_img = rawpy.imread(input_path_path)
+            face_img = raw_img.postprocess()
+            face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+        else:
+            face_img = cv2.imread(input_path_path)
 
         print(f'Detecting face...')
         ret = detector.detect(face_img, args.thresh, args.scales, do_flip=False)
