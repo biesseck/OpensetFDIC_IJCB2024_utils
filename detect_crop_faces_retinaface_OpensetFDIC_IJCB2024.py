@@ -35,6 +35,7 @@ def getArgs():
     parser.add_argument('--scales', type=str, default='[1.0]', help='the scale to resize image before detecting face')
     parser.add_argument('--draw_bbox_lmk_save_whole_img', action='store_true', help='')
     parser.add_argument('--save_crops', action='store_true', help='')
+    parser.add_argument('--process_only_biggest_face', action='store_true', help='')
     parser.add_argument('--align_face', action='store_true', help='')
     parser.add_argument('--force_lmk', action='store_true', help='')
 
@@ -190,6 +191,17 @@ def save_detections_txt(detections, saving_path):
                                                                                         lmark[4][0],lmark[4][1]))
 
 
+def get_biggest_bbox(bbox, points):
+    bboxes = [bbox[idx, 0:4] for idx in range(bbox.shape[0])]
+    areas = [(bboxes[idx][2]-bboxes[idx][0])*(bboxes[idx][3]-bboxes[idx][1]) for idx in range(bbox.shape[0])]
+    sorted_indices = sorted(range(len(areas)), key=lambda i: areas[i], reverse=True)
+    
+    bbox_biggest = np.array([bbox[sorted_indices[0]]])
+    points_biggest = np.array([points[sorted_indices[0]]])
+    return bbox_biggest, points_biggest
+
+
+
 def crop_align_face(args):
     input_dir = args.input_path.rstrip('/')
     if not os.path.exists(input_dir):
@@ -292,6 +304,7 @@ def crop_align_face(args):
             count_no_find_face += 1
 
             if args.force_lmk:
+                print('FORCE LMK')
                 bbox, points = get_generic_bbox_lmk(face_img)
                 count_crop_images -= 1
             else:
@@ -302,6 +315,10 @@ def crop_align_face(args):
 
         confidences = [bbox[idx, 4] for idx in range(bbox.shape[0])]
         print('Confidences:', confidences)
+
+        if args.process_only_biggest_face:
+            _bbox, _points = get_biggest_bbox(bbox, points)
+            bbox, points = _bbox, _points
 
         face_img_copy = face_img.copy()
         for bbox_idx in range(bbox.shape[0]):
@@ -335,7 +352,6 @@ def crop_align_face(args):
             if args.save_crops:
                 print(f'Saving {output_path_path} ...')
                 cv2.imwrite(output_path_path, face)
-
 
         # SAVE DETECTIONS AS TXT FILE
         output_txt_name = input_path_path.split('/')[-1].replace(os.path.splitext(input_path_path)[1], '.txt')
