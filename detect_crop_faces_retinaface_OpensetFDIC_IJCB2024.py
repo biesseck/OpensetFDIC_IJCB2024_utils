@@ -90,12 +90,16 @@ def draw_lmks(img, lmks):
 
 def get_all_files_in_path(folder_path, file_extension=['.jpg','.png'], pattern=''):
     file_list = []
+    num_files_found = 0
     for root, _, files in os.walk(folder_path):
         for filename in files:
             path_file = os.path.join(root, filename)
             for ext in file_extension:
                 if pattern in path_file and path_file.lower().endswith(ext.lower()):
                     file_list.append(path_file)
+                    num_files_found += 1
+                    print(num_files_found, end='\r')
+    print('')
     file_list.sort()
     return file_list
 
