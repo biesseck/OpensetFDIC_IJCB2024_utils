@@ -160,6 +160,7 @@ cython_debug/
 #.idea/
 
 
+retinaface/rcnn/pycocotools/_mask.c
 retinaface/model/*
 models/*
 
