@@ -219,7 +219,7 @@ def crop_align_face(args):
     output_dir += f"_nms={args.nms}"
     os.makedirs(output_dir, exist_ok=True)
 
-    output_imgs = os.path.join(output_dir.rstrip('/'), 'imgs')
+    output_imgs = os.path.join(output_dir.rstrip('/'), f'imgs_{args.face_size}x{args.face_size}')
     os.makedirs(output_imgs, exist_ok=True)
 
     output_txt = os.path.join(output_dir.rstrip('/'), 'txt')
