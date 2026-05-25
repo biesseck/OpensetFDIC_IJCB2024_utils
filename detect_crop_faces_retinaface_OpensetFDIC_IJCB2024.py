@@ -338,7 +338,7 @@ def crop_align_face(args):
 
             # face_name = '%s.png'%(file_name.split('.')[0])
             output_path_path = input_path_path.replace(input_dir, output_imgs)
-            face_name = output_path_path.split('/')[-1].split('.')[0] + \
+            face_name = os.path.splitext(output_path_path.split('/')[-1])[0] + \
                         f'_bbox{str(bbox_idx).zfill(2)}' + \
                         f'_conf{conf_}' + '.png'
             output_path_path = os.path.join(os.path.dirname(output_path_path), face_name)
